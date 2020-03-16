@@ -1,13 +1,28 @@
 #!/usr/bin/env python
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import sys
+import datetime
+import bz2
+import logging
+import json
+import argparse
+import os
+import io
 
 sys.path.append('../')
 from wiki_util import *
+from wiki_dump_download import existFile
+
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
 
 def printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url, parent_tokens,
                 target_tokens, origin_diff, target_diff, delimitor='^'):
+    logger=logging.getLogger(__name__)
+    
     # print the sampled revision in excel format
     revision_info = '[' + str(len(parent_tokens)) + '|' + str(len(target_tokens)) + ']'
     origin_diff_tokens = '[' + (
@@ -16,47 +31,88 @@ def printSample(task_id, sample_count, revision_count, page_title, sect_title, c
         str(target_diff[0]) if len(target_diff) == 1 else ','.join([str(i) for i in target_diff])) + ']'
     # print(sample_count, '/', revision_count, delimitor, page_title, delimitor, sect_title, delimitor, comment, delimitor, 
     #       diff_url, delimitor, revision_info, delimitor, origin_diff_tokens, delimitor, target_diff_tokens, sep='')                    
-    logging.info("[" + str(task_id) + "] " + str(sample_count) + '/' + str(
+    logger.info("[" + str(task_id) + "] " + str(sample_count) + '/' + str(
         revision_count) + delimitor + page_title + delimitor + sect_title +
                  delimitor + comment + delimitor + diff_url + delimitor + revision_info + delimitor + origin_diff_tokens + delimitor + target_diff_tokens)
 
 
 def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_window, negative_cmnt_num=10,
-                  negative_edit_num=10, count_revision_only=False, MIN_COMMENT_SIZE=20):
+                  negative_edit_num=10, count_revision_only=False,
+                  MIN_COMMENT_SIZE=20, max_page_count=None, azure=False,
+                  blob_service_client=None, container_name=None):
     # if os.path.exists(output_file):
     #     print("Output file already exists. Please remove first so I don't destroy your stuff please")
     #     sys.exit(1)
 
-    json_file = open(output_file, "w", buffering=1, encoding='utf-8')
+    logger=logging.getLogger(__name__)
+    
+    if not azure:
+        json_file = open(output_file, "w", buffering=1, encoding='utf-8')
+    else:
+        json_file = io.StringIO()
 
-    start_time = datetime.now()
-    wiki_file = bz2.open(dump_file, "rt", encoding='utf-8')
+    start_time = datetime.datetime.now()
+    if not azure:
+        wiki_file = bz2.open(dump_file, "rt", encoding='utf-8')
+    else:
+        wiki_file = blob_service_client.get_blob_client(container=container_name,
+                blob=dump_file)
+#        byte_stream = io.BytesIO()
+#        blob_client.download_blob().download_to_stream(byte_stream)
+#        byte_stream.seek(0)
+#        wiki_file = bz2.open(byte_stream, 'rt', encoding='utf-8')
     # template = '{"revision_id": %s, "diff_url": %s, "parent_id": %s, "timestamp": %s, "page_title": %s, "user_name": %s, \
     #             "user_id": %s, "user_ip": %s, "comment": %s, "parent_text": %s, "text": %s, "diff_tokens": %s}\n'
     sample_count = 0
     revision_count = 0
+    page_count = 0
+    page_revision_count = 0
+    revisions_per_page = []
+    comment_lengths = []
+    text_lengths = []
+    section_titles = 0
 
-    # time_elapsed = datetime.now() - start_time
+    # time_elapsed = datetime.datetime.now() - start_time
     # print("=== ", i, "/", file_num, ' === ', revision_count, " revisions extracted.", ' Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed), sep='')
 
     sample_parent_id = None
     sample_parent_text = None
     page_comment_list = []
-    prev_page_title = ''
+    prev_page_title = '' 
 
     try:
-        for page_title, revision in split_records(wiki_file):
-
+        for page_title, revision in split_records(wiki_file, azure):
             revision_count += 1
-            if count_revision_only:
-                if revision_count % 1000 == 0:
-                    print("= revision", revision_count, "=")
-                continue
+           
+            #if count_revision_only:
+            #    if revision_count % 1000 == 0:
+            #        logging.info("= revision" + str(revision_count) + " =")
+            #    continue
 
             # fields 
             rev_id, parent_id, timestamp, username, userid, userip, comment, text = extract_data(revision)
 
-            # if the length of comment is less than MIN_COMMENT SIZE (default 20), skip the revision directly.
+            if count_revision_only:
+                if prev_page_title != page_title:
+                    revisions_per_page.append(page_revision_count)
+                    page_revision_count = 0
+
+                    page_count += 1
+
+                comment_lengths.append(len(comment))
+
+                text_lengths.append(len(text))
+
+                comment = cleanCmntText(comment)
+                # extract the section title and the comment without section info
+                sect_title, comment = extractSectionTitle(comment)
+                if sect_title: section_titles += 1
+
+                if revision_count % 1000 == 0:
+                    logging.info("= revision" + str(revision_count) + " =")
+                continue
+           
+           # if the length of comment is less than MIN_COMMENT SIZE (default 20), skip the revision directly.
             if len(comment) < MIN_COMMENT_SIZE:
                 continue
 
@@ -71,8 +127,14 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
 
             # store the comments
             if prev_page_title != page_title:
+                # TEMP
+                print('CURRENT PAGE TITLE: {}'.format(page_title))
+                
+                page_count += 1
                 prev_page_title = page_title
                 page_comment_list.clear()
+                if max_page_count:
+                    if page_count > max_page_count: break
 
             _, comment_tokens = tokenizeText(comment)
             if checkComment(comment, comment_tokens, min_cmnt_length):
@@ -176,7 +238,50 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
             # if revision_count % 1000 == 0:
             #     print("Finished ", str(revision_count))
     finally:
-        time_elapsed = datetime.now() - start_time
-        logging.debug("=== " + str(sample_count) + " revisions sampled in total " + str(revision_count) + " revisions. " \
+        time_elapsed = datetime.datetime.now() - start_time
+        logger.debug("=== " + str(sample_count) + " revisions sampled in total " + str(revision_count) + " revisions. " \
                       + 'Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed) + ' ===')
-        json_file.close()
+        if count_revision_only:
+            json_dict = {"revision_count": revision_count, "time_elapsed":
+                    "(hh:mm:ss.ms) {}".format(time_elapsed),
+                         "page_count": page_count,
+                         "revisions_per_page": revisions_per_page,
+                         "comment_lengths": comment_lengths,
+                         "text_lengths": text_lengths,
+                         "section_titles": section_titles}
+            json_str = json.dumps(json_dict,
+                                  indent=None, sort_keys=False,
+                                  separators=(',', ': '), ensure_ascii=False)
+            json_file.write(json_str + '\n')
+            
+        if not azure: 
+            json_file.close()
+        else:
+            json_file.seek(0)
+            data = json_file.read().encode('utf-8')
+            blob_client = blob_service_client.get_blob_client(container=container_name,
+                blob=output_file)
+            container_client = blob_service_client.get_container_client(container_name)
+            if existFile('processed/', output_file, container_client, azure=True):
+                blob_client.delete_blob()
+            blob_client.upload_blob(data)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--container_name', type=str, default='wikipedia-data')
+    parser.add_argument('--dump_file', type=str)
+    parser.add_argument('--output_file', type=str)
+    args = parser.parse_args()
+    
+    logging.basicConfig(level=logging.INFO,
+                    format='(%(threadName)s) (%(name)s) %(message)s',
+                    )
+
+    #Azure connection
+    connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    
+    randSampleRev(1, args.dump_file, args.output_file, 1, 10, 5,
+            count_revision_only=True, azure=False)

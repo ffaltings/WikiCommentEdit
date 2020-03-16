@@ -81,6 +81,7 @@ celerybeat-schedule
 # virtualenv
 venv/
 ENV/
+.venv/
 
 # Spyder project settings
 .spyderproject
@@ -112,3 +113,6 @@ data/glove/
 data/processed/enwiki*
 data/raw/
 data_processing/extractor.txt
+
+# Notebooks
+/notebooks/

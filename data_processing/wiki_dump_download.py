@@ -1,29 +1,24 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import argparse
 import glob
 import hashlib
 import json
+import io
 import logging
 import os
 import threading
 import urllib.request
 from datetime import datetime
 
-parser = argparse.ArgumentParser(description='WikiDump Downloader')
-parser.add_argument('--data-path', type=str, default="./data/", help='the data directory')
-parser.add_argument('--compress-type', type=str, default='bz2',
-                    help='the compressed file type to download: 7z or bz2 [default: bz2]')
-parser.add_argument('--threads', type=int, default=3, help='number of threads [default: 3]')
-parser.add_argument('--start', type=int, default=1, help='the first file to download [default: 0]')
-parser.add_argument('--end', type=int, default=-1, help='the last file to download [default: -1]')
-parser.add_argument('--verify', action='store_true', default=False, help='verify the dump files in the specific path')
-args = parser.parse_args()
-
-logging.basicConfig(level=logging.DEBUG,
-                    format='(%(threadName)s) %(message)s',
-                    )
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
 
-def download(dump_status_file, data_path, compress_type, start, end, thread_num):
+
+
+def download(dump_status_file, data_path, compress_type, start, end,
+        thread_num, azure=False):
     url_list = []
     file_list = []
     with open(dump_status_file) as json_data:
@@ -58,7 +53,7 @@ def download(dump_status_file, data_path, compress_type, start, end, thread_num)
     task = WikiDumpTask(file_list, url_list)
     threads = []
     for i in range(thread_num):
-        t = threading.Thread(target=worker, args=(i, task))
+        t = threading.Thread(target=worker, args=(i, task, azure))
         threads.append(t)
         t.start()
 
@@ -69,8 +64,11 @@ def download(dump_status_file, data_path, compress_type, start, end, thread_num)
             t.join()
 
 
-def existFile(data_path, cur_file):
-    exist_file_list = glob.glob(data_path + "*." + args.compress_type)
+def existFile(data_path, cur_file, container_client=None, azure=False):
+    if not azure:
+        exist_file_list = glob.glob(data_path + "*." + args.compress_type)
+    else:
+        exist_file_list = [b.name for b in container_client.list_blobs() if data_path in b.name]
     exist_file_names = [os.path.basename(i) for i in exist_file_list]
     cur_file_name = os.path.basename(cur_file)
     if cur_file_name in exist_file_names:
@@ -117,12 +115,13 @@ def verify(dump_status_file, compress_type, data_path):
 
 
 def main():
-    dump_status_file = args.data_path + "dumpstatus.json"
+    dump_status_file = args.dumpstatus_path
 
     if args.verify:
         verify(dump_status_file, args.compress_type, args.data_path)
     else:
-        download(dump_status_file, args.data_path, args.compress_type, args.start, args.end, args.threads)
+        download(dump_status_file, args.data_path, args.compress_type,
+                args.start, args.end, args.threads, args.azure)
 
 
 '''
@@ -160,7 +159,7 @@ worker is main function for each thread.
 '''
 
 
-def worker(work_id, tasks):
+def worker(work_id, tasks, azure=False):
     logging.debug('Starting.')
 
     # grab one task from task_list
@@ -169,8 +168,15 @@ def worker(work_id, tasks):
         if not url:
             break
         logging.debug('Assigned task (' + str(cur_progress) + '/' + str(total_num) + '): ' + str(url))
-        if not existFile(args.data_path, file_name):
-            urllib.request.urlretrieve(url, file_name)
+        if not existFile(args.data_path, file_name, container_client, azure):
+            if not azure:
+                urllib.request.urlretrieve(url, file_name)
+            else:
+                page = urllib.request.urlopen(url)
+                file = io.BytesIO(page.read())
+                blob_client = blob_service_client.get_blob_client(container=args.container_name,
+                        blob=file_name)
+                blob_client.upload_blob(file)
             logging.debug("File Downloaded: " + url)
         else:
             logging.debug("File Exists, Skip: " + url)
@@ -180,6 +186,31 @@ def worker(work_id, tasks):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='WikiDump Downloader')
+    parser.add_argument('--data-path', type=str, default="./data/raw/", help='the data directory')
+    parser.add_argument('--dumpstatus_path', type=str, default='./data/raw/dumpstatus.json')
+    parser.add_argument('--compress-type', type=str, default='bz2',
+                    help='the compressed file type to download: 7z or bz2 [default: bz2]')
+    parser.add_argument('--threads', type=int, default=3, help='number of threads [default: 3]')
+    parser.add_argument('--start', type=int, default=1, help='the first file to download [default: 0]')
+    parser.add_argument('--end', type=int, default=-1, help='the last file to download [default: -1]')
+    parser.add_argument('--verify', action='store_true', default=False,
+            help='verify the dump files in the specific pat')
+    parser.add_argument('--azure', action='store_true', default=False,
+        help='whether to save to azure')
+    parser.add_argument('--container_name', type=str, default='wikipedia-data',
+        help='Azure storage container name')
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.DEBUG,
+                    format='(%(threadName)s) %(message)s',
+                    )
+    # Azure connection
+    if args.azure:
+        connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+        container_client = blob_service_client.get_container_client(args.container_name)
+
     start_time = datetime.now()
     main()
     time_elapsed = datetime.now() - start_time

@@ -1,10 +1,20 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 #!/usr/bin/env python
 import argparse
 import sys
+import spacy
+import os
+import logging
+import datetime
+import threading
 
 sys.path.append('../')
 from wiki_util import *
 from wikicmnt_extractor_st import randSampleRev
+
+from azure.storage.blob import BlobServiceClient, ContainerClient, BlobClient
 
 # arguments
 parser = argparse.ArgumentParser(description='Wiki Extractor')
@@ -26,19 +36,18 @@ parser.add_argument('--user_stat', type=bool, default=False, help='whether to do
 parser.add_argument('--merge_only', action='store_true', default=False, help='merge the results only')
 parser.add_argument('--neg_cmnt_num', type=int, default=10,
                     help='how many negative comments sampled for ranking problem [default: 10]')
-parser.add_argument('--count_revision_only', type=bool, default=False,
+parser.add_argument('--count_revision_only', action='store_true', default=False,
                     help='count the revision only without sampling anything [default: False]')
+parser.add_argument('--max_page_count', type=int, default=None, help='max number of pages to process')
+parser.add_argument('--azure', action='store_true', default=False, help='whether to read/write from/to azure')
+parser.add_argument('--container_name', type=str, default='wikipedia-data', help='azure container to use')
 args = parser.parse_args()
 
 # create sample output folder if it doesn't exist
 if not os.path.exists(args.output_path):
     os.makedirs(args.output_path)
 
-# logging configuration
-logging.basicConfig(level=logging.DEBUG,
-                    format='(%(threadName)s) %(message)s',
-                    )
-
+#TODO: fix logging across scripts...
 '''
 WikiSampleTask class contains a list of dump files to be sampled.
 The assign_task function will be called by workers to grab a task.
@@ -52,7 +61,9 @@ class WikiSampleTask(object):
         self.total_num = len(dump_list)
 
     def assign_task(self):
-        logging.debug('Assign tasks ... Waiting for lock')
+        logger = logging.getLogger(__name__)
+
+        logger.debug('Assign tasks ... Waiting for lock')
         self.lock.acquire()
         dump_name = None
         cur_progress = None
@@ -72,23 +83,28 @@ worker is main function for each thread.
 
 
 def worker(work_id, tasks):
-    logging.debug('Starting.')
+    logger=logging.getLogger(__name__)
+
+    logger.debug('Starting.')
     output_file = args.data_path + 'sample/enwiki_sample_' + str(work_id) + '.json'
     # grab one task from task_list
     while 1:
         dump_file, cur_progress, total_num = tasks.assign_task()
         if not dump_file:
             break
-        logging.debug('Assigned task (' + str(cur_progress) + '/' + str(total_num) + '): ' + str(dump_file))
+        logger.debug('Assigned task (' + str(cur_progress) + '/' + str(total_num) + '): ' + str(dump_file))
         # start to sample the dump file
         output_file = args.output_path + 'enwiki-sample-' + os.path.basename(dump_file)[27:-4] + '.json'
         randSampleRev(work_id, dump_file, output_file, args.sample_ratio, args.min_cmnt_length, args.ctx_window,
-                      args.neg_cmnt_num)
-    logging.debug('Exiting.')
+                      args.neg_cmnt_num, azure=args.azure,
+                      count_revision_only=args.count_revision_only,
+                      blob_service_client=blob_service_client,
+                      container_name=args.container_name)
+    logger.debug('Exiting.')
 
 
 def initLogger(file_idx):
-    logger = logging.getLogger()
+    logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)  # or whatever
 
     handler = logging.FileHandler('extractor.txt', 'a', 'utf-8')  # or whatever
@@ -99,16 +115,20 @@ def initLogger(file_idx):
 
 
 def main():
+
+    logger = logging.getLogger(__name__) 
+
     # single file mode
     if args.single_thread:
-
-        logger = initLogger(args.single_thread)
-
+        
         data_path = args.data_path
         output_path = args.output_path
-
-        dump_list = sorted(glob.glob(data_path + "*.bz2"))
-        print(dump_list)
+        
+        if not args.azure:
+            dump_list = sorted(glob.glob(data_path + "*.bz2"))
+        else:
+            dump_list = sorted([b.name for b in container_client.list_blobs() if
+                    data_path in b.name])
         dump_file = dump_list[args.single_thread - 1]
         output_file = output_path + 'enwiki-sample-' + os.path.basename(dump_file)[27:-4] + '.json'
 
@@ -119,15 +139,23 @@ def main():
         print("start to preprocess dump file:", str(dump_file))
         logger.info("[" + str(args.single_thread) + "] Start to sample dump file " + dump_file)
         randSampleRev(args.single_thread, dump_file, output_file, args.sample_ratio, args.min_cmnt_length,
-                      args.ctx_window, args.neg_cmnt_num)
+                      args.ctx_window, args.neg_cmnt_num,
+                      max_page_count=args.max_page_count, azure=args.azure,
+                      count_revision_only = args.count_revision_only,
+                      blob_service_client=blob_service_client,
+                      container_name=args.container_name)
         return
 
     if not args.merge_only:
-        dump_list = glob.glob(args.data_path + "*.bz2")
+        if not args.azure:
+            dump_list = glob.glob(args.data_path + "*.bz2")
+        else:
+            dump_list = [b.name for b in container_client.list_blobs() if
+                    args.data_path in b.name]        
         # # testing
         # dump_list = dump_list[:5]
         dump_num = len(dump_list)
-        logging.debug("Samping revisions from " + str(dump_num) + " dump files")
+        logger.debug("Samping revisions from " + str(dump_num) + " dump files")
 
         task = WikiSampleTask(dump_list)
         threads = []
@@ -136,20 +164,35 @@ def main():
             threads.append(t)
             t.start()
 
-        logging.debug('Waiting for worker threads')
+        logger.debug('Waiting for worker threads')
         main_thread = threading.currentThread()
         for t in threading.enumerate():
             if t is not main_thread:
                 t.join()
 
-        logging.debug('Merging the sample outputs from each dump file')
+        logger.debug('Merging the sample outputs from each dump file')
 
     # merge the result
-    mergeOutputs(args.output_path)
+    #TODO add azure compatibility to mergeOutputs
+    #mergeOutputs(args.output_path)
 
 
 if __name__ == '__main__':
-    start_time = datetime.now()
+    connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    container_client = blob_service_client.get_container_client(args.container_name)
+    
+    # logging configuration
+    logging.basicConfig(level=logging.DEBUG,
+                    format='(%(threadName)s) (%(name)s) %(message)s',
+                    )
+    logging.getLogger('azure').setLevel(logging.ERROR)
+    logging.getLogger('urllib3').setLevel(logging.ERROR)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    
+    start_time = datetime.datetime.now()
     main()
-    time_elapsed = datetime.now() - start_time
-    logging.debug('Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed))
+    time_elapsed = datetime.datetime.now() - start_time
+    logger.debug('Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed))
+

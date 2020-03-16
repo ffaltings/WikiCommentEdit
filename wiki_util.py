@@ -3,9 +3,14 @@ import glob
 import html
 import random
 import re
+import bz2
+import io
+import codecs
 
 import spacy
 from tqdm import tqdm
+
+from azure.storage.blob import BlobServiceClient, BlobClient
 
 # initialize the spacy
 nlp = spacy.load('en')
@@ -47,14 +52,30 @@ def extract_data(revision_part):
 '''
 Extract the revision text buffer, which has the format "<revision> ... </revision>".
 '''
-def split_records(wiki_file, chunk_size=150 * 1024):
+def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
     
     text_buffer = ""    
     cur_index = 0
+    if azure:
+        blob_size = wiki_file.get_blob_properties()['size']
+        cur_offset = 0 
+
+        decompressor = bz2.BZ2Decompressor()
+        decoder = codecs.getincrementaldecoder('utf-8')()
 
     while True:
-        chunk = wiki_file.read(chunk_size)
-
+        if not azure:
+            chunk = wiki_file.read(chunk_size)
+        else:
+            if cur_offset < blob_size:
+                bytes_data = wiki_file.download_blob(offset=cur_offset,
+                    length=chunk_size).content_as_bytes()
+                cur_offset += len(bytes_data)
+                chunk = decompressor.decompress(bytes_data)
+                chunk = decoder.decode(input=chunk)
+            else:
+                chunk = ''
+                
         if chunk:
             text_buffer += chunk
 
