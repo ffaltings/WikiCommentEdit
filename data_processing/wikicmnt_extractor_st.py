@@ -66,11 +66,9 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
     sample_count = 0
     revision_count = 0
     page_count = 0
+    revisions = {}
     page_revision_count = 0
-    revisions_per_page = []
-    comment_lengths = []
-    text_lengths = []
-    section_titles = 0
+    revisions_per_page = {}
 
     # time_elapsed = datetime.datetime.now() - start_time
     # print("=== ", i, "/", file_num, ' === ', revision_count, " revisions extracted.", ' Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed), sep='')
@@ -94,19 +92,18 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
 
             if count_revision_only:
                 if prev_page_title != page_title:
-                    revisions_per_page.append(page_revision_count)
+                    revisions_per_page[prev_page_title] = page_revision_count
                     page_revision_count = 0
-
                     page_count += 1
 
-                comment_lengths.append(len(comment))
-
-                text_lengths.append(len(text))
+                page_revision_count += 1
 
                 comment = cleanCmntText(comment)
                 # extract the section title and the comment without section info
                 sect_title, comment = extractSectionTitle(comment)
-                if sect_title: section_titles += 1
+                revisions[rev_id] = {"comment_text":comment,
+                        "text_length":len(text), "parent_id":parent_id,
+                        "section_title":sect_title, "page_title":page_title}
 
                 if revision_count % 1000 == 0:
                     logging.info("= revision" + str(revision_count) + " =")
@@ -246,9 +243,7 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
                     "(hh:mm:ss.ms) {}".format(time_elapsed),
                          "page_count": page_count,
                          "revisions_per_page": revisions_per_page,
-                         "comment_lengths": comment_lengths,
-                         "text_lengths": text_lengths,
-                         "section_titles": section_titles}
+                         "revision": revisions}
             json_str = json.dumps(json_dict,
                                   indent=None, sort_keys=False,
                                   separators=(',', ': '), ensure_ascii=False)

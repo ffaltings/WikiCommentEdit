@@ -6,11 +6,16 @@ import re
 import bz2
 import io
 import codecs
+import collections
 
 import spacy
 from tqdm import tqdm
 
 from azure.storage.blob import BlobServiceClient, BlobClient
+
+RevisionMETA = collections.namedtuple("RevisionMETA", ['comment_text',
+    'rev_id', 'parent_id', 'text_length', 'section_title', 'page_title'])
+
 
 # initialize the spacy
 nlp = spacy.load('en')
@@ -49,6 +54,71 @@ def extract_data(revision_part):
     text, next_idx = extract_with_delims(revision_part, "<text xml:space=\"preserve\">", "</text>", next_idx)
     return (rev_id, parent_id, timestamp, username, userid, userip, comment, text)
 
+
+def split_pages(wiki_file, chunk_size=1024):
+
+    text_buffer = ""
+    cur_index = 0
+    cursor = 0
+    page_start_index = -1
+    page_end_index = -1
+
+    while True:
+        try:
+            chunk = wiki_file.read(chunk_size)
+           # print('split_pages l65')
+
+            if chunk:
+                text_buffer += chunk
+        except MemoryError:
+            # if memory error, abandon current buffer and restart
+            text_buffer = ""
+            page_start_index = -1
+            page_end_index = -1
+            cursor = 0
+            cur_index = 0
+            continue
+
+        #print(len(text_buffer))
+        cur_index = 0
+        PAGE_START = "<page>"
+        PAGE_END = "</page>"
+        
+        while True:
+            if page_start_index == -1:
+                page_start_index = text_buffer.find(PAGE_START, cursor)
+                if page_start_index == -1:
+                    cursor = len(text_buffer) - 1 # set cursor to last index
+                    break
+                cursor = page_start_index + len(PAGE_START)
+           
+            if page_end_index == -1:
+                page_end_index = text_buffer.find(PAGE_END, cursor)
+                if page_end_index == -1:
+                    cursor = len(text_buffer) - 1
+                    break
+                cursor = page_end_index + len(PAGE_END)
+
+            yield text_buffer[page_start_index:page_end_index + len(PAGE_END)]
+
+            cur_index = page_end_index + len(PAGE_END)
+            page_start_index = -1
+            page_end_index = -1
+
+        if chunk == "":
+            break
+
+        if cur_index == -1:
+            text_buffer = ""
+        else:
+            text_buffer = text_buffer[cur_index:]
+            cursor -= cur_index
+            if page_start_index != -1:
+                page_start_index -= cur_index 
+            if page_end_index != -1:
+                page_end_index -= cur_index
+
+
 '''
 Extract the revision text buffer, which has the format "<revision> ... </revision>".
 '''
@@ -62,6 +132,8 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
 
         decompressor = bz2.BZ2Decompressor()
         decoder = codecs.getincrementaldecoder('utf-8')()
+
+    page_title = ""
 
     while True:
         if not azure:
@@ -113,7 +185,7 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
 
             cur_index = revision_end_index + len(REVISION_END)
 
-        # No more data
+        # No more datA
         if chunk == "":
             break
 

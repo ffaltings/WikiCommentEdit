@@ -17,35 +17,9 @@ from wikicmnt_extractor_st import randSampleRev
 from azure.storage.blob import BlobServiceClient, ContainerClient, BlobClient
 
 # arguments
-parser = argparse.ArgumentParser(description='Wiki Extractor')
-parser.add_argument('--data_path', type=str, default="../data/raw/", help='the data directory')
-parser.add_argument('--output_path', type=str, default="../data/processed/", help='the sample output path')
-parser.add_argument('--min_page_tokens', type=int, default=50,
-                    help='the minimum size of tokens in page to extract [default: 100]')
-parser.add_argument('--max_page_tokens', type=int, default=2000,
-                    help='the maximum size of tokens in page to extract [default: 1000]')
-parser.add_argument('--min_cmnt_length', type=int, default=8,
-                    help='the minimum words contained in the comments [default: 8]')
-parser.add_argument('--ctx_window', type=int, default=5, help='the window size of context [default: 5]')
-parser.add_argument('--sample_ratio', type=float, default=0.01, help='the ratio of sampling [default: 0.001]')
-parser.add_argument('--threads', type=int, default=3, help='the number of sampling threads [default: 5]')
-parser.add_argument('--single_thread', type=int, default=0,
-                    help='the dump file index when using single thread mode. If the index equals to zero, '
-                         'use multi-thread mode to proprocess all the dump files [default: 0]')
-parser.add_argument('--user_stat', type=bool, default=False, help='whether to do user statistics')
-parser.add_argument('--merge_only', action='store_true', default=False, help='merge the results only')
-parser.add_argument('--neg_cmnt_num', type=int, default=10,
-                    help='how many negative comments sampled for ranking problem [default: 10]')
-parser.add_argument('--count_revision_only', action='store_true', default=False,
-                    help='count the revision only without sampling anything [default: False]')
-parser.add_argument('--max_page_count', type=int, default=None, help='max number of pages to process')
-parser.add_argument('--azure', action='store_true', default=False, help='whether to read/write from/to azure')
-parser.add_argument('--container_name', type=str, default='wikipedia-data', help='azure container to use')
-args = parser.parse_args()
-
 # create sample output folder if it doesn't exist
-if not os.path.exists(args.output_path):
-    os.makedirs(args.output_path)
+#if not os.path.exists(args.output_path):
+#    os.makedirs(args.output_path)
 
 #TODO: fix logging across scripts...
 '''
@@ -55,10 +29,10 @@ The assign_task function will be called by workers to grab a task.
 
 
 class WikiSampleTask(object):
-    def __init__(self, dump_list):
-        self.lock = threading.Lock()
+    def __init__(self, dump_list, total_num, lock):
+        self.lock = lock
         self.dump_list = dump_list
-        self.total_num = len(dump_list)
+        self.total_num = total_num
 
     def assign_task(self):
         logger = logging.getLogger(__name__)
@@ -157,7 +131,8 @@ def main():
         dump_num = len(dump_list)
         logger.debug("Samping revisions from " + str(dump_num) + " dump files")
 
-        task = WikiSampleTask(dump_list)
+        lock = threading.Lock()
+        task = WikiSampleTask(dump_list, len(dump_list), lock)
         threads = []
         for i in range(args.threads):
             t = threading.Thread(target=worker, args=(i, task))
@@ -178,6 +153,32 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Wiki Extractor')
+    parser.add_argument('--data_path', type=str, default="../data/raw/", help='the data directory')
+    parser.add_argument('--output_path', type=str, default="../data/processed/", help='the sample output path')
+    parser.add_argument('--min_page_tokens', type=int, default=50,
+                        help='the minimum size of tokens in page to extract [default: 100]')
+    parser.add_argument('--max_page_tokens', type=int, default=2000,
+                        help='the maximum size of tokens in page to extract [default: 1000]')
+    parser.add_argument('--min_cmnt_length', type=int, default=8,
+                        help='the minimum words contained in the comments [default: 8]')
+    parser.add_argument('--ctx_window', type=int, default=5, help='the window size of context [default: 5]')
+    parser.add_argument('--sample_ratio', type=float, default=0.01, help='the ratio of sampling [default: 0.001]')
+    parser.add_argument('--threads', type=int, default=3, help='the number of sampling threads [default: 5]')
+    parser.add_argument('--single_thread', type=int, default=0,
+                        help='the dump file index when using single thread mode. If the index equals to zero, '
+                             'use multi-thread mode to proprocess all the dump files [default: 0]')
+    parser.add_argument('--user_stat', type=bool, default=False, help='whether to do user statistics')
+    parser.add_argument('--merge_only', action='store_true', default=False, help='merge the results only')
+    parser.add_argument('--neg_cmnt_num', type=int, default=10,
+                        help='how many negative comments sampled for ranking problem [default: 10]')
+    parser.add_argument('--count_revision_only', action='store_true', default=False,
+                        help='count the revision only without sampling anything [default: False]')
+    parser.add_argument('--max_page_count', type=int, default=None, help='max number of pages to process')
+    parser.add_argument('--azure', action='store_true', default=False, help='whether to read/write from/to azure')
+    parser.add_argument('--container_name', type=str, default='wikipedia-data', help='azure container to use')
+    args = parser.parse_args()
+
     connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
     blob_service_client = BlobServiceClient.from_connection_string(connect_str)
     container_client = blob_service_client.get_container_client(args.container_name)
