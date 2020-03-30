@@ -162,6 +162,13 @@ worker is main function for each thread.
 def worker(work_id, tasks, azure=False):
     logging.debug('Starting.')
 
+    # Azure connection
+    container_client = None
+    if azure:
+        connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+        container_client = blob_service_client.get_container_client(args.container_name)
+
     # grab one task from task_list
     while 1:
         url, file_name, cur_progress, total_num = tasks.assign_task()
@@ -205,11 +212,6 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)s) %(message)s',
                     )
-    # Azure connection
-    if args.azure:
-        connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-        container_client = blob_service_client.get_container_client(args.container_name)
 
     start_time = datetime.now()
     main()
