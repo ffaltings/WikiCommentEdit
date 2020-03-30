@@ -257,7 +257,7 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
             blob_client = blob_service_client.get_blob_client(container=container_name,
                 blob=output_file)
             container_client = blob_service_client.get_container_client(container_name)
-            if existFile('processed/', output_file, container_client, azure=True):
+            if existFile('processed/', output_file, container_client, azure=2):
                 blob_client.delete_blob()
             blob_client.upload_blob(data)
 
@@ -265,6 +265,7 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--azure', action='store_true')
     parser.add_argument('--container_name', type=str, default='wikipedia-data')
     parser.add_argument('--dump_file', type=str)
     parser.add_argument('--output_file', type=str)
@@ -275,8 +276,9 @@ if __name__ == '__main__':
                     )
 
     #Azure connection
-    connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    if args.azure:
+        connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
     
     randSampleRev(1, args.dump_file, args.output_file, 1, 10, 5,
-            count_revision_only=True, azure=False)
+            count_revision_only=True, azure=args.azure)
