@@ -7,9 +7,11 @@ import bz2
 import io
 import codecs
 import collections
+import numpy as np
 
 import spacy
 from tqdm import tqdm
+from nltk.translate.bleu_score import sentence_bleu
 
 from azure.storage.blob import BlobServiceClient, BlobClient
 
@@ -194,6 +196,69 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
         else:
             text_buffer = text_buffer[cur_index:]
 
+def split_into_sections(text):
+    section_title_pattern = '(^=+\s*.+\s*=+$)'
+    section_splits = re.split(section_title_pattern, text, flags=re.MULTILINE)
+    section_texts = section_splits[::2]
+    section_titles = ['Lead'] + section_splits[1::2]
+    section_texts = [cleanWikiText(t) for t in section_texts]
+    section_titles = [t.strip('= ') for t in section_titles]
+
+    return section_texts, section_titles
+
+def is_contiguous(seq):
+    '''
+    Check if ordered (ascending) sequence of numbers is contiguous
+    '''
+
+    return (seq[-1] - seq[0]) == (len(seq) - 1)
+
+def split_edits(source_text, target_text, k=5):
+    source_sections, source_titles = split_into_sections(source_text)
+    target_sections, target_titles = split_into_sections(target_text)
+
+    tgt_sect_dict = {title: text for title,text in zip(target_titles,\
+            target_sections)}
+
+    for src_sect, src_title in zip(source_sections, source_titles):
+        if src_title in tgt_sect_dict.keys():
+            tgt_sect = tgt_sect_dict[src_title]
+        else:
+            continue
+
+        source_sentences, _ = tokenizeText(src_sect)
+        target_sentences, _ = tokenizeText(tgt_sect)
+
+        for i, src_sent in enumerate(source_sentences):
+            min_idx = max(i-k, 0)
+            max_idx = min(i+k, len(target_sentences))
+            if min_idx >= max_idx:
+                continue
+            bleu_scores = [sentence_bleu([src_sent], target_sentences[j])\
+                    for j in range(min_idx, max_idx)]
+            try:
+                match_idx = np.argmax(bleu_scores) + min_idx
+                match_score = np.max(bleu_scores)
+            except ValueError as e:
+                print(min_idx, max_idx, len(bleu_scores))
+                raise e
+
+            tgt_sent = target_sentences[match_idx]
+            tgt_lctx = target_sentences[max(match_idx-k,0):match_idx]
+            src_lctx = source_sentences[max(i-k, 0):i]
+
+            source_diff, target_diff = diffRevision(src_sent, tgt_sent)
+            if source_diff and not target_diff: #deletion
+                #if is_contiguous(source_diff): yield src_sent, tgt_sent,\
+                        #tgt_lctx
+                continue
+            elif not source_diff and target_diff:
+                if is_contiguous(target_diff): yield src_sent, tgt_sent,\
+                        src_lctx, tgt_lctx
+          
+
+
+
 def sampleNext(sample_ratio):
     return random.random() < sample_ratio
 
@@ -223,6 +288,9 @@ def cleanWikiText(wiki_text):
     '''
     Cleans wikipedia text and retrieves references
     '''
+
+    # resolve [[Category|name]] links
+    wiki_text = re.sub('\[\[[^\[\]]+\|([^\[\]]+)\]\]', r'\1', wiki_text) 
     
     # replace link: [[link_name]] and quotes
     wiki_text = re.sub("\[\[", "", wiki_text)
@@ -238,10 +306,12 @@ def cleanWikiText(wiki_text):
     # use html unescape to decode the html special characters
     #wiki_text = html.unescape(wiki_text) # do outside of cleanText
 
+    # remove markup
     html_elements = [
         '<table.*>.*</table>', #tables
         '<!--[^<>]*-->', # comments
-        '<\w+>', # html tags
+        '<\w+>[^<>]*</\w+>',
+        '<\w+>|<\w+/>', # html tags
         '{{[^{}]*}}', # wikipedia elements
         '&nbsp;'
     ]
@@ -262,7 +332,7 @@ def retrieveReferences(text):
         span = match.span()
         deref_text += text[prev_idx:span[0]]
         prev_idx = span[1]
-        deref_text += " ref {} ".format(ref_counter)
+        deref_text += " (ref {}) ".format(ref_counter)
         ref_counter += 1
         ref_list.append(match.string)
 
