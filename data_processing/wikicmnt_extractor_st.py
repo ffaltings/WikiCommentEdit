@@ -12,7 +12,7 @@ import argparse
 import os
 import io
 
-sys.path.append('../')
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from wiki_util import *
 from wiki_dump_download import existFile
 
@@ -101,9 +101,12 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
                 comment = cleanCmntText(comment)
                 # extract the section title and the comment without section info
                 sect_title, comment = extractSectionTitle(comment)
-                revisions[rev_id] = {"comment_text":comment,
+
+                meta = {"comment_text":comment,
                         "text_length":len(text), "parent_id":parent_id,
                         "section_title":sect_title, "page_title":page_title}
+                        
+                revisions[rev_id] = meta
 
                 if revision_count % 1000 == 0:
                     logging.info("= revision" + str(revision_count) + " =")

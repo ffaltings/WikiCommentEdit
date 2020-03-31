@@ -15,10 +15,7 @@ from datetime import datetime
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
 
-
-
-def download(dump_status_file, data_path, compress_type, start, end,
-        thread_num, azure=False):
+def get_dump_task(dump_status_file, data_path, compress_type, start, end, azure=False):
     url_list = []
     file_list = []
     with open(dump_status_file) as json_data:
@@ -27,7 +24,7 @@ def download(dump_status_file, data_path, compress_type, start, end,
         dump_dict = history_dump['files']
         dump_files = sorted(list(dump_dict.keys()))
 
-        if args.end > 0 and args.end <= len(dump_files):
+        if end > 0 and end <= len(dump_files):
             dump_files = dump_files[start - 1:end]
         else:
             dump_files = dump_files[start - 1:]
@@ -35,7 +32,7 @@ def download(dump_status_file, data_path, compress_type, start, end,
         # print all files to be downloaded.
         print("All files to download ...")
         for i, file in enumerate(dump_files):
-            print(i + args.start, file)
+            print(i + start, file)
 
         file_num = 0
         for dump_file in dump_files:
@@ -51,6 +48,12 @@ def download(dump_status_file, data_path, compress_type, start, end,
         json_data.close()
 
     task = WikiDumpTask(file_list, url_list)
+    return task
+
+def download(dump_status_file, data_path, compress_type, start, end,
+        thread_num, azure=False):
+   
+    task = get_dump_task(dump_status_file, data_path, compress_type, start, end, azure)
     threads = []
     for i in range(thread_num):
         t = threading.Thread(target=worker, args=(i, task, azure))
@@ -64,9 +67,9 @@ def download(dump_status_file, data_path, compress_type, start, end,
             t.join()
 
 
-def existFile(data_path, cur_file, container_client=None, azure=False):
+def existFile(data_path, cur_file, compress_type, container_client=None, azure=False):
     if not azure:
-        exist_file_list = glob.glob(data_path + "*." + args.compress_type)
+        exist_file_list = glob.glob(data_path + "*." + compress_type)
     else:
         exist_file_list = [b.name for b in container_client.list_blobs() if data_path in b.name]
     exist_file_names = [os.path.basename(i) for i in exist_file_list]
@@ -94,7 +97,7 @@ def verify(dump_status_file, compress_type, data_path):
         for i, (file, value) in enumerate(dump_dict.items()):
             gt_md5 = value['md5']
             print("#", i, " ", file, ' ', value['md5'], sep='')
-            if existFile(data_path, file):
+            if existFile(data_path, file, compress_type):
                 file_md5 = md5(data_path + file)
                 if file_md5 == gt_md5:
                     pass_files.append(file)
@@ -175,7 +178,7 @@ def worker(work_id, tasks, azure=False):
         if not url:
             break
         logging.debug('Assigned task (' + str(cur_progress) + '/' + str(total_num) + '): ' + str(url))
-        if not existFile(args.data_path, file_name, container_client, azure):
+        if not existFile(args.data_path, file_name, args.compress_type, container_client, azure):
             if not azure:
                 urllib.request.urlretrieve(url, file_name)
             else:
