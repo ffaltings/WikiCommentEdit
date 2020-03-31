@@ -220,7 +220,10 @@ clean the wiki text
 E.g. "[[link name]] a&quot; bds&quot; ''markup''" to "link name a bds markup"
 '''
 def cleanWikiText(wiki_text):
-
+    '''
+    Cleans wikipedia text and retrieves references
+    '''
+    
     # replace link: [[link_name]] and quotes
     wiki_text = re.sub("\[\[", "", wiki_text)
     wiki_text = re.sub("\]\]", "", wiki_text)
@@ -233,9 +236,37 @@ def cleanWikiText(wiki_text):
     # wiki_text = re.sub("&amp;", "&", wiki_text)
 
     # use html unescape to decode the html special characters
-    wiki_text = html.unescape(wiki_text)
+    #wiki_text = html.unescape(wiki_text) # do outside of cleanText
+
+    html_elements = [
+        '<table.*>.*</table>', #tables
+        '<!--[^<>]*-->', # comments
+        '<\w+>', # html tags
+        '{{[^{}]*}}', # wikipedia elements
+        '&nbsp;'
+    ]
+    for pattern in html_elements:
+        wiki_text = re.sub(pattern, '', wiki_text, flags=re.DOTALL)
+
+    wiki_text = wiki_text.strip('\n')
 
     return wiki_text
+
+def retrieveReferences(text):
+    deref_text = ''
+    prev_idx = 0
+    reference_pattern = '<ref[^<>]*/>|<ref[^<>]*>[^<>]*</ref>|\{\{sfn\|[^{}]*\}\}'
+    ref_counter = 0
+    ref_list = []
+    for match in re.finditer(reference_pattern, text):
+        span = match.span()
+        deref_text += text[prev_idx:span[0]]
+        prev_idx = span[1]
+        deref_text += " ref {} ".format(ref_counter)
+        ref_counter += 1
+        ref_list.append(match.string)
+
+    return deref_text, ref_list
 
 def tokenizeText(text):
     doc = nlp(text)
