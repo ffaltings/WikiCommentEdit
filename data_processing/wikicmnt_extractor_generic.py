@@ -61,13 +61,12 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
     revision_count = 0
     page_count = 0
     revisions = {}
-    page_revision_count = 0
     revisions_per_page = {}
 
     sample_parent_id = None
     sample_parent_text = None
     page_comment_list = []
-    prev_page_title = '' 
+    prev_page_title = ''
 
     try:
         records = split_records(wiki_file, azure)

@@ -35,7 +35,7 @@ if __name__ == "__main__":
     output_file = dump_file.replace(args.compress_type, "json")
     logging.debug("Dumped to " + dump_file + " processing to " + output_file)
 
-    ## add the filtering criteria here
+    ## add the filtering criteria and processing steps here. Each step is self-contained and removable
     filters_and_processors = [
         CommentLength(20, 200),
         HasSectionTitle(),
@@ -43,7 +43,6 @@ if __name__ == "__main__":
         HasGrounding(),
         ExtractLeftRightContext(5, 5)
     ]
-
 
     process(1, dump_file, output_file, 1, 10, ctx_window=5, filters=filters_and_processors)
 

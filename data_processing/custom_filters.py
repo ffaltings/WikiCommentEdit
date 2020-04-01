@@ -54,7 +54,7 @@ class TextLength(WikiFilter):
 
 class HasSectionTitle(WikiFilter):
     def apply_meta(self, meta):
-        return meta["section_title"] is not None
+        return bool(meta["section_title"])
 
 class IsHumanEdit(WikiFilter):
     def apply_instance(self, instance):
