@@ -18,7 +18,7 @@ RevisionMETA = collections.namedtuple("RevisionMETA", ['comment_text',
 
 
 # initialize the spacy
-nlp = spacy.load('en')
+nlp = spacy.load('en_core_web_sm') # was: 'en'
 
 '''
 Extract the contents by delimitors
