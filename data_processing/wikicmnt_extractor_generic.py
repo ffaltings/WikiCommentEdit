@@ -133,7 +133,7 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
 
                 for filter in filters:
                     if not filter.apply_pre_diff(json_dict):
-                        continue  
+                        continue
 
                 # tokenization
                 src_sents, src_tokens = tokenizeText(src_text)

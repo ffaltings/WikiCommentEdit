@@ -21,6 +21,14 @@ class WikiFilter():
         """Applied to the final instance"""
         return True
 
+
+class PageIdFilter(WikiFilter):
+    def __init__(self, accepted_ids):
+        self.accepted_ids = accepted_ids
+
+    def apply_meta(self, meta):
+        return meta["page_id"] in self.accepted_ids
+
 class CommentLength(WikiFilter):
     def __init__(self, min_len, max_len):
         self.min_len = min_len
