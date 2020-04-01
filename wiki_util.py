@@ -167,6 +167,8 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
                     break
                     #logging.debug("Error: page information is cut. FIX THIS ISSUE!!!")
 
+                page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", page_start_index)
+
             # find the revision start position
             revision_start_index = text_buffer.find(REVISION_START, cur_index)
 
@@ -181,7 +183,7 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
             if revision_end_index == -1:
                 break
 
-            yield page_title, text_buffer[revision_start_index:revision_end_index + len(REVISION_END)]
+            yield page_title, page_id, text_buffer[revision_start_index:revision_end_index + len(REVISION_END)]
 
             cur_index = revision_end_index + len(REVISION_END)
 

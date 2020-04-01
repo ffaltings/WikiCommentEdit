@@ -73,7 +73,7 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
         records = split_records(wiki_file, azure)
         records = itertools.islice(records, 1000) # local debugging
 
-        for page_title, revision in records:
+        for page_title, page_id, revision in records:
             revision_count += 1
 
             # fields 
@@ -81,7 +81,7 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
             comment = cleanCmntText(comment)
             sect_title, comment = extractSectionTitle(comment)
 
-            meta = {"comment_text":comment,
+            meta = {"page_id": page_id, "comment_text":comment,
                 "text_length":len(text), "parent_id": parent_id,
                 "section_title":sect_title, "page_title": page_title}
 
@@ -126,10 +126,10 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
                 src_text = cleanWikiText(src_text)
                 tgt_text = cleanWikiText(tgt_text)
 
-                json_dict = {"revision_id": rev_id, "parent_id": parent_id, "timestamp": timestamp, \
-                                     "diff_url": diff_url, "page_title": page_title, \
-                                     "src_text": src_text, "tgt_text": tgt_text,
-                                     "comment": comment }
+                json_dict = {"page_id": page_id, "revision_id": rev_id, "parent_id": parent_id, "timestamp": timestamp, \
+                            "diff_url": diff_url, "page_title": page_title, \
+                            "src_text": src_text, "tgt_text": tgt_text,
+                            "comment": comment }
 
                 for filter in filters:
                     if not filter.apply_pre_diff(json_dict):
@@ -157,7 +157,6 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
 
                 # src_sent_diff = findSentDiff(src_sents, src_tokens, src_token_diff)
                 tgt_sent_diff = findSentDiff(tgt_sents, tgt_tokens, tgt_token_diff)
-
 
                 json_dict.update({"src_token": src_ctx_tokens, "src_action": src_action,
                                   "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action})

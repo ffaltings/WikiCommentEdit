@@ -79,7 +79,7 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
     prev_page_title = '' 
 
     try:
-        for page_title, revision in split_records(wiki_file, azure):
+        for page_title, page_id, revision in split_records(wiki_file, azure):
             revision_count += 1
            
             #if count_revision_only:
