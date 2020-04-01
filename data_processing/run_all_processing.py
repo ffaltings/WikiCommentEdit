@@ -4,7 +4,9 @@ import urllib
 import os
 
 from wiki_dump_download import existFile, get_dump_task
-from wikicmnt_extractor_generic import randSampleRev
+from wikicmnt_extractor_generic import process
+
+from custom_filters import *
 
 def download_on_demand(url, dump_file, data_path, compress_type):
     if not existFile(data_path, dump_file, compress_type):
@@ -33,7 +35,17 @@ if __name__ == "__main__":
     output_file = dump_file.replace(args.compress_type, "json")
     logging.debug("Dumped to " + dump_file + " processing to " + output_file)
 
-    randSampleRev(1, dump_file, output_file, 1, 10, 5, count_revision_only=False)
+    ## add the filtering criteria here
+    filters_and_processors = [
+        CommentLength(20, 200),
+        HasSectionTitle(),
+        TextLength(0, 1000000),
+        HasGrounding(),
+        ExtractLeftRightContext(5, 5)
+    ]
+
+
+    process(1, dump_file, output_file, 1, 10, ctx_window=5, filters=filters_and_processors)
 
 
 
