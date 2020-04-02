@@ -66,7 +66,7 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                 "text_length":len(text), "parent_id": parent_id,
                 "section_title":sect_title, "page_title": page_title}
 
-            if any(not filter.apply_meta(meta) for filter in filters):
+            if not all(filter.apply_meta(meta) for filter in filters):
                 continue
 
             # store the comments
@@ -111,7 +111,7 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                             "src_text": src_text, "tgt_text": tgt_text,
                             "comment": comment }
 
-                if any(not filter.apply_pre_diff(json_dict) for filter in filters):
+                if not all(filter.apply_pre_diff(json_dict) for filter in filters):
                     continue
 
                 # tokenization
@@ -137,7 +137,7 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                 json_dict.update({"src_token": src_ctx_tokens, "src_action": src_action,
                                   "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action})
 
-                if any(not filter.apply_post_diff(json_dict) for filter in filters):
+                if not all(filter.apply_post_diff(json_dict) for filter in filters):
                     continue
 
                 # src_sent_diff = findSentDiff(src_sents, src_tokens, src_token_diff)
@@ -147,7 +147,7 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                     for i in tgt_sent_diff:
                         sent_instance = deepcopy(json_dict)
                         
-                        if any(not filter.apply_instance(sent_instance) for filter in filters):
+                        if not all(filter.apply_instance(sent_instance) for filter in filters):
                             continue
 
                 else:
@@ -178,7 +178,7 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                                         "neg_cmnts": neg_comments, "neg_edits": neg_edits, "pos_edits": pos_edits
                                         }
                         
-                        if any(not filter.apply_instance(sent_instance) for filter in filters):
+                        if not all(filter.apply_instance(sent_instance) for filter in filters):
                             continue
 
                         json_str = json.dumps(json_dict,
