@@ -1,24 +1,18 @@
 #!/usr/bin/env python
 
-from dotenv import load_dotenv
-load_dotenv()
-
 import sys
 import datetime
-import bz2
 import logging
 import json
 import argparse
 import os
 import io
 import itertools
+from copy import deepcopy
 
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from wiki_util import *
 from wiki_dump_download import existFile
-
-from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
-
 
 def printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url, parent_tokens,
                 target_tokens, origin_diff, target_diff, delimitor='^'):
@@ -29,33 +23,21 @@ def printSample(task_id, sample_count, revision_count, page_title, sect_title, c
     origin_diff_tokens = '[' + (
         str(origin_diff[0]) if len(origin_diff) == 1 else ','.join([str(i) for i in origin_diff])) + ']'
     target_diff_tokens = '[' + (
-        str(target_diff[0]) if len(target_diff) == 1 else ','.join([str(i) for i in target_diff])) + ']'
-    # print(sample_count, '/', revision_count, delimitor, page_title, delimitor, sect_title, delimitor, comment, delimitor, 
-    #       diff_url, delimitor, revision_info, delimitor, origin_diff_tokens, delimitor, target_diff_tokens, sep='')                    
+        str(target_diff[0]) if len(target_diff) == 1 else ','.join([str(i) for i in target_diff])) + ']'               
     logger.info("[" + str(task_id) + "] " + str(sample_count) + '/' + str(
         revision_count) + delimitor + page_title + delimitor + sect_title +
                  delimitor + comment + delimitor + diff_url + delimitor + revision_info + delimitor + origin_diff_tokens + delimitor + target_diff_tokens)
 
 
-def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_window, negative_cmnt_num=10,
+def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_length, ctx_window, negative_cmnt_num=10,
                   negative_edit_num=10, count_revision_only=False,
                   MIN_COMMENT_SIZE=20, max_page_count=None, azure=False,
-                  blob_service_client=None, container_name=None,
+                  sentence_level=True,
                   filters=[], extractor=None):
 
     logger=logging.getLogger(__name__)
     
-    if not azure:
-        json_file = open(output_file, "w", buffering=1, encoding='utf-8')
-    else:
-        json_file = io.StringIO()
-
     start_time = datetime.datetime.now()
-    if not azure:
-        wiki_file = bz2.open(dump_file, "rt", encoding='utf-8')
-    else:
-        wiki_file = blob_service_client.get_blob_client(container=container_name,
-                blob=dump_file)
 
     sample_count = 0
     revision_count = 0
@@ -69,7 +51,7 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
     prev_page_title = ''
 
     try:
-        records = split_records(wiki_file, azure)
+        records = split_records(wiki_stream, azure)
         records = itertools.islice(records, 1000) # local debugging
 
         for page_title, page_id, revision in records:
@@ -84,9 +66,8 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
                 "text_length":len(text), "parent_id": parent_id,
                 "section_title":sect_title, "page_title": page_title}
 
-            for filter in filters:
-                if not filter.apply_meta(meta):
-                    continue
+            if any(not filter.apply_meta(meta) for filter in filters):
+                continue
 
             # store the comments
             if prev_page_title != page_title:
@@ -130,9 +111,8 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
                             "src_text": src_text, "tgt_text": tgt_text,
                             "comment": comment }
 
-                for filter in filters:
-                    if not filter.apply_pre_diff(json_dict):
-                        continue
+                if any(not filter.apply_pre_diff(json_dict) for filter in filters):
+                    continue
 
                 # tokenization
                 src_sents, src_tokens = tokenizeText(src_text)
@@ -154,55 +134,61 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
                 src_ctx_tokens, src_action = extContext(src_tokens, src_token_diff, ctx_window)
                 tgt_ctx_tokens, tgt_action = extContext(tgt_tokens, tgt_token_diff, ctx_window)
 
-                # src_sent_diff = findSentDiff(src_sents, src_tokens, src_token_diff)
-                tgt_sent_diff = findSentDiff(tgt_sents, tgt_tokens, tgt_token_diff)
-
                 json_dict.update({"src_token": src_ctx_tokens, "src_action": src_action,
                                   "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action})
 
-                for filter in filters:
-                    if not filter.apply_post_diff(json_dict):
-                        continue
+                if any(not filter.apply_post_diff(json_dict) for filter in filters):
+                    continue
 
-                # randomly sample the negative comments
-                if negative_cmnt_num > len(page_comment_list) - 1:
-                    neg_cmnt_idx = range(len(page_comment_list) - 1)
-                else:
-                    neg_cmnt_idx = random.sample(range(len(page_comment_list) - 1), negative_cmnt_num)
-                neg_comments = [page_comment_list[i] for i in neg_cmnt_idx]
-
-                # generate the positive edits
-                pos_edits = [tgt_sents[i] for i in tgt_sent_diff]
-
-                # generate negative edits
-                neg_edits_idx = [i for i in range(len(tgt_sents)) if i not in tgt_sent_diff]
-                if negative_edit_num > len(neg_edits_idx):
-                    sampled_neg_edits_idx = neg_edits_idx
-                else:
-                    sampled_neg_edits_idx = random.sample(neg_edits_idx, negative_edit_num)
-                neg_edits = [tgt_sents[i] for i in sampled_neg_edits_idx]
-
-                if (len(src_token_diff) > 0 or len(tgt_token_diff) > 0):
-                    json_dict = {"revision_id": rev_id, "parent_id": parent_id, "timestamp": timestamp, \
-                                    "diff_url": diff_url, "page_title": page_title, \
-                                    "src_text": src_text, "tgt_text": tgt_text,
-                                    "comment": comment, "src_token": src_ctx_tokens, "src_action": src_action, \
-                                    "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action, \
-                                    "neg_cmnts": neg_comments, "neg_edits": neg_edits, "pos_edits": pos_edits
-                                    }
-                    
-                    for filter in filters:
-                        if not filter.apply_instance(json_dict):
+                # src_sent_diff = findSentDiff(src_sents, src_tokens, src_token_diff)
+                tgt_sent_diff = findSentDiff(tgt_sents, tgt_tokens, tgt_token_diff)
+            
+                if sentence_level:
+                    for i in tgt_sent_diff:
+                        sent_instance = deepcopy(json_dict)
+                        
+                        if any(not filter.apply_instance(sent_instance) for filter in filters):
                             continue
 
-                    json_str = json.dumps(json_dict,
-                                            indent=None, sort_keys=False,
-                                            separators=(',', ': '), ensure_ascii=False)
-                    json_file.write(json_str + '\n')
-                    sample_count += 1
+                else:
+                    # randomly sample the negative comments
+                    if negative_cmnt_num > len(page_comment_list) - 1:
+                        neg_cmnt_idx = range(len(page_comment_list) - 1)
+                    else:
+                        neg_cmnt_idx = random.sample(range(len(page_comment_list) - 1), negative_cmnt_num)
+                    neg_comments = [page_comment_list[i] for i in neg_cmnt_idx]
 
-                    printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url,
-                                src_tokens, tgt_tokens, src_token_diff, tgt_token_diff)
+                    # generate the positive edits
+                    pos_edits = [tgt_sents[i] for i in tgt_sent_diff]
+
+                    # generate negative edits
+                    neg_edits_idx = [i for i in range(len(tgt_sents)) if i not in tgt_sent_diff]
+                    if negative_edit_num > len(neg_edits_idx):
+                        sampled_neg_edits_idx = neg_edits_idx
+                    else:
+                        sampled_neg_edits_idx = random.sample(neg_edits_idx, negative_edit_num)
+                    neg_edits = [tgt_sents[i] for i in sampled_neg_edits_idx]
+
+                    if (len(src_token_diff) > 0 or len(tgt_token_diff) > 0):
+                        json_dict = {"revision_id": rev_id, "parent_id": parent_id, "timestamp": timestamp, \
+                                        "diff_url": diff_url, "page_title": page_title, \
+                                        "src_text": src_text, "tgt_text": tgt_text,
+                                        "comment": comment, "src_token": src_ctx_tokens, "src_action": src_action, \
+                                        "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action, \
+                                        "neg_cmnts": neg_comments, "neg_edits": neg_edits, "pos_edits": pos_edits
+                                        }
+                        
+                        if any(not filter.apply_instance(sent_instance) for filter in filters):
+                            continue
+
+                        json_str = json.dumps(json_dict,
+                                                indent=None, sort_keys=False,
+                                                separators=(',', ': '), ensure_ascii=False)
+                        json_output_stream.write(json_str + '\n')
+                        sample_count += 1
+
+                        printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url,
+                                    src_tokens, tgt_tokens, src_token_diff, tgt_token_diff)
 
             # decide to sample next
             if sampleNext(sample_ratio):
@@ -225,16 +211,6 @@ def process(task_id, dump_file, output_file, sample_ratio, min_cmnt_length, ctx_
             json_str = json.dumps(json_dict,
                                   indent=None, sort_keys=False,
                                   separators=(',', ': '), ensure_ascii=False)
-            json_file.write(json_str + '\n')
+            json_output_stream.write(json_str + '\n')
             
-        if not azure: 
-            json_file.close()
-        else:
-            json_file.seek(0)
-            data = json_file.read().encode('utf-8')
-            blob_client = blob_service_client.get_blob_client(container=container_name,
-                blob=output_file)
-            container_client = blob_service_client.get_container_client(container_name)
-            if existFile('processed/', output_file, container_client, azure=2):
-                blob_client.delete_blob()
-            blob_client.upload_blob(data)
+
