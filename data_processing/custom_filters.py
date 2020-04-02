@@ -41,6 +41,26 @@ class CommentLength(WikiFilter):
         return clen >= self.min_len and clen < self.max_len
 
 
+class CommentTokenLength(WikiFilter):
+
+    def __init__(self, min_len, max_len):
+        self.min_len = min_len
+        self.max_len = max_len
+
+    def apply_meta(self, meta):
+        # for this filter we don't need real tokenization, approximation is good enough
+        approx_tokens = meta["comment_text"].split(" ")
+        clen = len(approx_tokens)
+        return clen >= self.min_len and clen < self.max_len
+
+class CommentBlocklist(WikiFilter):
+    def __init__(self, exclude_words = ["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]):
+        self.exclude_words = exclude_words
+
+    def apply_meta(self, meta):
+        comment = meta["comment_text"]
+        return not any(word in comment for word in self.exclude_words)
+
 class TextLength(WikiFilter):
     def __init__(self, min_len, max_len):
         self.min_len = min_len

@@ -48,6 +48,8 @@ if __name__ == "__main__":
     filters_and_processors = [
         ExcludePageTypes(["Talk:"]),
         CommentLength(20, 200),
+        CommentBlocklist(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
+        CommentTokenLength(2, 1000),
         HasSectionTitle(),
         TextLength(0, 1000000),
         HasGrounding(look_in_src=True, look_in_tgt=True),

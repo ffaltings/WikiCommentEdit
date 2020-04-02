@@ -82,10 +82,7 @@ def process(task_id, wiki_stream, output_stream,
                 if max_page_count:
                     if page_count > max_page_count: break
 
-            _, comment_tokens = tokenizeText(comment)
-            if checkComment(comment, comment_tokens, min_cmnt_length):
-                # page_comment_list.append(comment)
-                page_comment_list.append(comment)
+            page_comment_list.append(comment)
 
             # write the sampled revision to json file
             # Skip the line if it is not satisfied with some criteria
@@ -95,7 +92,6 @@ def process(task_id, wiki_stream, output_stream,
                     page_title.replace(" ",'%20') + '&type=revision&diff=' + rev_id + '&oldid=' + parent_id
 
                 # check whether the comment is appropriate by some criteria
-                # check_comment(comment, length_only=True)
                 try:
                     src_text = extractSectionText(sample_parent_text, sect_title)
                     tgt_text = extractSectionText(text, sect_title)
@@ -164,8 +160,8 @@ def process(task_id, wiki_stream, output_stream,
                     total_instances += extracted_sentences
                     if extracted_sentences > 0:
                         sample_count += 1
-                        printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url,
-                                    src_tokens, tgt_tokens, src_token_diff, tgt_token_diff)
+                        #printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url,
+                        #            src_tokens, tgt_tokens, src_token_diff, tgt_token_diff)
 
                 else:
                     # randomly sample the negative comments
@@ -214,7 +210,8 @@ def process(task_id, wiki_stream, output_stream,
 
     finally:
         time_elapsed = datetime.datetime.now() - start_time
-        logger.debug("=== " + str(sample_count) + " revisions sampled in total " + str(revision_count) + " revisions. " \
+        logger.debug("=== " + str(sample_count) + " revisions sampled in total " + str(revision_count) + " revisions " \
+                      + 'across ' + str(page_count) + ' pages. ' \
                       + 'Total instances: ' + str(total_instances) + ". " \
                       + 'Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed) + ' ===')
             
