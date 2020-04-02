@@ -45,6 +45,7 @@ def process(task_id, wiki_stream, output_stream,
     sample_count = 0
     revision_count = 0
     page_count = 0
+    total_instances = 0
 
     sample_parent_id = None
     sample_parent_text = None
@@ -145,8 +146,9 @@ def process(task_id, wiki_stream, output_stream,
                 tgt_sent_diff = findSentDiff(tgt_sents, tgt_tokens, tgt_token_diff)
             
                 if sentence_level:
+
+                    extracted_sentences = 0
                     for i in tgt_sent_diff:
-                        
                         # for each sentence instance, create a deep copy, so that filters/processors can mutate them
                         sent_instance = deepcopy(rev_instance)
                         sent_instance['edits'] = tgt_sents[i]
@@ -156,8 +158,14 @@ def process(task_id, wiki_stream, output_stream,
                         if not all(filter.apply_instance(sent_instance) for filter in filters):
                             continue
                         
-                        sample_count += 1
+                        extracted_sentences += 1
                         extractor.write_instance(output_stream, sent_instance)
+
+                    total_instances += extracted_sentences
+                    if extracted_sentences > 0:
+                        sample_count += 1
+                        printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url,
+                                    src_tokens, tgt_tokens, src_token_diff, tgt_token_diff)
 
                 else:
                     # randomly sample the negative comments
@@ -192,6 +200,7 @@ def process(task_id, wiki_stream, output_stream,
 
                         extractor.write_instance(output_stream, rev_instance)
                         sample_count += 1
+                        total_instances += 1
                         printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url,
                                     src_tokens, tgt_tokens, src_token_diff, tgt_token_diff)
 
@@ -206,6 +215,7 @@ def process(task_id, wiki_stream, output_stream,
     finally:
         time_elapsed = datetime.datetime.now() - start_time
         logger.debug("=== " + str(sample_count) + " revisions sampled in total " + str(revision_count) + " revisions. " \
+                      + 'Total instances: ' + str(total_instances) + ". " \
                       + 'Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed) + ' ===')
             
 
