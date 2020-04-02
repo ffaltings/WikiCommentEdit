@@ -68,7 +68,7 @@ class HasSectionTitle(WikiFilter):
 
 class IsHumanEdit(WikiFilter):
     def apply_instance(self, instance):
-        return True
+        raise NotImplementedError
 
 class HasGrounding(WikiFilter):
     def apply_instance(self, instance):

@@ -10,7 +10,7 @@ load_dotenv()
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
 from wiki_dump_download import existFile, get_dump_task
-from wikicmnt_extractor_generic import process
+from generic_extractor import process
 
 from custom_filters import *
 from custom_extractors import NDJsonExtractor
