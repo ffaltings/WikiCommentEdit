@@ -29,11 +29,14 @@ def printSample(task_id, sample_count, revision_count, page_title, sect_title, c
                  delimitor + comment + delimitor + diff_url + delimitor + revision_info + delimitor + origin_diff_tokens + delimitor + target_diff_tokens)
 
 
-def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_length, ctx_window, negative_cmnt_num=10,
-                  negative_edit_num=10, count_revision_only=False,
-                  MIN_COMMENT_SIZE=20, max_page_count=None, azure=False,
-                  sentence_level=True,
-                  filters=[], extractor=None):
+def process(task_id, wiki_stream, output_stream,
+                sample_ratio, min_cmnt_length, ctx_window, negative_cmnt_num=10,
+                negative_edit_num=10,
+                max_page_count=None, 
+                azure=False,
+                sentence_level=True,
+                extractor=None,
+                filters=[]):
 
     logger=logging.getLogger(__name__)
     
@@ -42,8 +45,6 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
     sample_count = 0
     revision_count = 0
     page_count = 0
-    revisions = {}
-    revisions_per_page = {}
 
     sample_parent_id = None
     sample_parent_text = None
@@ -106,12 +107,12 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                 src_text = cleanWikiText(src_text)
                 tgt_text = cleanWikiText(tgt_text)
 
-                json_dict = {"page_id": page_id, "revision_id": rev_id, "parent_id": parent_id, "timestamp": timestamp, \
+                rev_instance = {"page_id": page_id, "revision_id": rev_id, "parent_id": parent_id, "timestamp": timestamp, \
                             "diff_url": diff_url, "page_title": page_title, \
                             "src_text": src_text, "tgt_text": tgt_text,
                             "comment": comment }
 
-                if not all(filter.apply_pre_diff(json_dict) for filter in filters):
+                if not all(filter.apply_pre_diff(rev_instance) for filter in filters):
                     continue
 
                 # tokenization
@@ -134,10 +135,10 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                 src_ctx_tokens, src_action = extContext(src_tokens, src_token_diff, ctx_window)
                 tgt_ctx_tokens, tgt_action = extContext(tgt_tokens, tgt_token_diff, ctx_window)
 
-                json_dict.update({"src_token": src_ctx_tokens, "src_action": src_action,
+                rev_instance.update({"src_token": src_ctx_tokens, "src_action": src_action,
                                   "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action})
 
-                if not all(filter.apply_post_diff(json_dict) for filter in filters):
+                if not all(filter.apply_post_diff(rev_instance) for filter in filters):
                     continue
 
                 # src_sent_diff = findSentDiff(src_sents, src_tokens, src_token_diff)
@@ -145,10 +146,18 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
             
                 if sentence_level:
                     for i in tgt_sent_diff:
-                        sent_instance = deepcopy(json_dict)
                         
+                        # for each sentence instance, create a deep copy, so that filters/processors can mutate them
+                        sent_instance = deepcopy(rev_instance)
+                        sent_instance['edits'] = tgt_sents[i]
+                        sent_instance['left_sentence'] = tgt_sents[i-1] if i-1 >= 0 else None
+                        sent_instance['right_sentence'] = tgt_sents[i+1] if i+1 < len(tgt_sents) else None
+
                         if not all(filter.apply_instance(sent_instance) for filter in filters):
                             continue
+                        
+                        sample_count += 1
+                        extractor.write_instance(output_stream, sent_instance)
 
                 else:
                     # randomly sample the negative comments
@@ -170,7 +179,7 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                     neg_edits = [tgt_sents[i] for i in sampled_neg_edits_idx]
 
                     if (len(src_token_diff) > 0 or len(tgt_token_diff) > 0):
-                        json_dict = {"revision_id": rev_id, "parent_id": parent_id, "timestamp": timestamp, \
+                        rev_instance = {"revision_id": rev_id, "parent_id": parent_id, "timestamp": timestamp, \
                                         "diff_url": diff_url, "page_title": page_title, \
                                         "src_text": src_text, "tgt_text": tgt_text,
                                         "comment": comment, "src_token": src_ctx_tokens, "src_action": src_action, \
@@ -178,15 +187,11 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
                                         "neg_cmnts": neg_comments, "neg_edits": neg_edits, "pos_edits": pos_edits
                                         }
                         
-                        if not all(filter.apply_instance(sent_instance) for filter in filters):
+                        if not all(filter.apply_instance(rev_instance) for filter in filters):
                             continue
 
-                        json_str = json.dumps(json_dict,
-                                                indent=None, sort_keys=False,
-                                                separators=(',', ': '), ensure_ascii=False)
-                        json_output_stream.write(json_str + '\n')
+                        extractor.write_instance(output_stream, rev_instance)
                         sample_count += 1
-
                         printSample(task_id, sample_count, revision_count, page_title, sect_title, comment, diff_url,
                                     src_tokens, tgt_tokens, src_token_diff, tgt_token_diff)
 
@@ -202,15 +207,5 @@ def process(task_id, wiki_stream, json_output_stream, sample_ratio, min_cmnt_len
         time_elapsed = datetime.datetime.now() - start_time
         logger.debug("=== " + str(sample_count) + " revisions sampled in total " + str(revision_count) + " revisions. " \
                       + 'Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed) + ' ===')
-        if count_revision_only:
-            json_dict = {"revision_count": revision_count, "time_elapsed":
-                    "(hh:mm:ss.ms) {}".format(time_elapsed),
-                         "page_count": page_count,
-                         "revisions_per_page": revisions_per_page,
-                         "revision": revisions}
-            json_str = json.dumps(json_dict,
-                                  indent=None, sort_keys=False,
-                                  separators=(',', ': '), ensure_ascii=False)
-            json_output_stream.write(json_str + '\n')
             
 

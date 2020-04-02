@@ -13,6 +13,7 @@ from wiki_dump_download import existFile, get_dump_task
 from wikicmnt_extractor_generic import process
 
 from custom_filters import *
+from custom_extractors import NDJsonExtractor
 
 def download_on_demand(url, dump_file, data_path, compress_type):
     if not existFile(data_path, dump_file, compress_type):
@@ -45,6 +46,7 @@ if __name__ == "__main__":
 
     ## add the filtering criteria and processing steps here. Each step is self-contained and removable
     filters_and_processors = [
+        ExcludePageTypes(["Talk:"]),
         CommentLength(20, 200),
         HasSectionTitle(),
         TextLength(0, 1000000),
@@ -68,7 +70,7 @@ if __name__ == "__main__":
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
     json_output_stream = io.StringIO() if args.azure else open(output_file, "w", buffering=1, encoding='utf-8')
 
-    process(1, wiki_input_stream, json_output_stream, 1, 10, ctx_window=5, filters=filters_and_processors)
+    process(1, wiki_input_stream, json_output_stream, 1, 10, ctx_window=5, extractor=NDJsonExtractor(), filters=filters_and_processors)
     
     wiki_input_stream.close()
     if not args.azure:

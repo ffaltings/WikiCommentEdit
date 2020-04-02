@@ -2,6 +2,8 @@
 Idea: Filters as first-class objects can be stacked at runtime.
 """
 
+import re
+
 class WikiFilter():
     """WikiFilters are callables supporting any of apply_meta, apply_instance, apply_pre_diff, apply_post_diff"""
 
@@ -52,6 +54,14 @@ class TextLength(WikiFilter):
         return src_text and tgt_text and len_src >= self.min_len and len_tgt >= self.min_len and len_src < self.max_len and len_tgt < self.max_len
 
 
+class ExcludePageTypes(WikiFilter):
+    def __init__(self, excludes_prefixes = ["Talk:"]):
+        self.excludes_prefixes = excludes_prefixes
+
+    def apply_meta(self, meta):
+        has_any_prefix = any(prefix in meta["page_title"] for prefix in self.excludes_prefixes)
+        return not has_any_prefix
+
 class HasSectionTitle(WikiFilter):
     def apply_meta(self, meta):
         return bool(meta["section_title"])
@@ -63,6 +73,7 @@ class IsHumanEdit(WikiFilter):
 class HasGrounding(WikiFilter):
     def apply_instance(self, instance):
         if "http://" in instance["src_text"]:
+            instance["grounding_urls"] = re.findall(r"http://[^\s|]+", instance["src_text"])
             return True
         else:
             return False
