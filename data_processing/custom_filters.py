@@ -71,12 +71,24 @@ class IsHumanEdit(WikiFilter):
         raise NotImplementedError
 
 class HasGrounding(WikiFilter):
-    def apply_instance(self, instance):
+    def apply_pre_diff(self, instance):
         if "http://" in instance["src_text"]:
             instance["grounding_urls"] = re.findall(r"http://[^\s|]+", instance["src_text"])
             return True
         else:
             return False
+
+class GroundingDomainWhitelist(WikiFilter):
+    def __init__(self, whitelist=[], whitelist_file=None):
+        if whitelist_file:
+            with open(whitelist_file, "r", encoding="utf-8") as f:
+                self.whitelist = [x.trim() for x in f.readlines()]
+        else:
+            self.whitelist = whitelist
+
+    def apply_pre_diff(self, instance):
+        instance["grounding_urls"] = [url for url in instance["grounding_urls"] if any(domain in url for domain in self.whitelist)]
+        return len(instance["grounding_urls"]) > 0
 
 class ExtractLeftRightContext(WikiFilter):
     def __init__(self, left_window_size, right_window_size):
