@@ -50,7 +50,7 @@ if __name__ == "__main__":
         CommentLength(20, 200),
         HasSectionTitle(),
         TextLength(0, 1000000),
-        HasGrounding(),
+        HasGrounding(look_in_src=True, look_in_tgt=True),
         ExtractLeftRightContext(5, 5)
     ]
 

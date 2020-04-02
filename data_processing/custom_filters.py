@@ -71,9 +71,19 @@ class IsHumanEdit(WikiFilter):
         raise NotImplementedError
 
 class HasGrounding(WikiFilter):
+    def __init__(self, look_in_src = True, look_in_tgt = True):
+        self.look_in_src = look_in_src
+        self.look_in_tgt = look_in_tgt
+
     def apply_pre_diff(self, instance):
-        if "http://" in instance["src_text"]:
-            instance["grounding_urls"] = re.findall(r"http://[^\s|]+", instance["src_text"])
+        
+        sources = []
+        if self.look_in_src: sources.append(instance["src_text"])
+        if self.look_in_tgt: sources.append(instance["tgt_text"])
+
+        if any("http://" in source for source in sources):
+            source_text = "".join(sources)
+            instance["grounding_urls"] = list(set(re.findall(r"http://[^\s|]+", source_text)))
             return True
         else:
             return False
