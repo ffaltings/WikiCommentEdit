@@ -9,10 +9,7 @@ import os
 import io
 import bz2
 
-from dotenv import load_dotenv
-load_dotenv()
-from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
-
+from azure_utils import open_azure_input_stream, upload_to_azure_output_stream
 from wiki_dump_download import existFile, get_dump_task
 from generic_extractor import process
 
@@ -36,6 +33,7 @@ if __name__ == "__main__":
     parser.add_argument('--data-path', type=str, default="./data/raw/", help='the data directory')
     parser.add_argument('--compress-type', type=str, default='bz2', help='the compressed file type to download: 7z or bz2 [default: bz2]')
     parser.add_argument('--azure', action='store_true')
+    parser.add_argument('--delete-temp-files', action='store_true', help='if set, temporary files are deleted again after run is complete')
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)s) %(message)s')
 
@@ -62,22 +60,8 @@ if __name__ == "__main__":
     extractor = TsvExtractor(["comment"])
     extractor = NDJsonExtractor()
 
-    def open_azure_input_stream():
-        raise NotImplementedError
-
-    def upload_to_azure_output_stream():
-        #json_output_stream.seek(0)
-        #data = json_output_stream.read().encode('utf-8')
-        #blob_client = blob_service_client.get_blob_client(container=container_name, blob=output_file)
-        #container_client = blob_service_client.get_container_client(container_name)
-        #if existFile('processed/', output_file, container_client, azure=2):
-        #    blob_client.delete_blob()
-        #blob_client.upload_blob(data)
-        raise NotImplementedError
-
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
     json_output_stream = io.StringIO() if args.azure else open(output_file, "w", buffering=1, encoding='utf-8')
-
 
     process(1, wiki_input_stream, json_output_stream, 1, 10, ctx_window=5, extractor=extractor, filters=filters_and_processors)
     
@@ -86,3 +70,9 @@ if __name__ == "__main__":
         json_output_stream.close()
     else:
         upload_to_azure_output_stream()
+    logging.debug("Done with task %d" % args.index)
+
+    if args.delete_temp_files:
+        os.remove(dump_file)
+        logging.debug("Removed temporary file " + dump_file)
+        

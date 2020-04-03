@@ -10,7 +10,6 @@ import io
 import itertools
 from copy import deepcopy
 
-sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from wiki_util import *
 from wiki_dump_download import existFile
 
