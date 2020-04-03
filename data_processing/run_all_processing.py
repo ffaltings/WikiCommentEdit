@@ -16,8 +16,12 @@ from generic_extractor import process
 from custom_filters import *
 from custom_extractors import *
 
-def download_on_demand(url, dump_file, data_path, compress_type):
-    if not existFile(data_path, dump_file, compress_type):
+# Hack for HPC: cert verification issues
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+def download_on_demand(url, dump_file, temp_path, compress_type):
+    if not existFile(temp_path, dump_file, compress_type):
         urllib.request.urlretrieve(url, dump_file)
     else:
         logging.debug("File Exists, Skip: " + url)
@@ -29,8 +33,9 @@ if __name__ == "__main__":
     parser.add_argument('--index', type=int, help='the index of the file (within the dump status file) to download and process')
     #parser.add_argument('--start', type=int, default=1, help='the first file to download [default: 0]')
     #parser.add_argument('--end', type=int, default=-1, help='the last file to download [default: -1]')
-    parser.add_argument('--dumpstatus_path', type=str, default='./data/raw/dumpstatus.json')
-    parser.add_argument('--data-path', type=str, default="./data/raw/", help='the data directory')
+    parser.add_argument('--dumpstatus_path', type=str, default='./data/dumpstatus.json')
+    parser.add_argument('--temp-path', type=str, default="./data/raw/", help='the temp / data directory, used to download wiki dump files')
+    parser.add_argument('--output-path', type=str, default="./data/out/", help='the output directory')
     parser.add_argument('--compress-type', type=str, default='bz2', help='the compressed file type to download: 7z or bz2 [default: bz2]')
     parser.add_argument('--azure', action='store_true')
     parser.add_argument('--delete-temp-files', action='store_true', help='if set, temporary files are deleted again after run is complete')
@@ -38,10 +43,11 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)s) %(message)s')
 
     logging.debug("Determining dump task..")
-    dump_tasks = get_dump_task(args.dumpstatus_path, args.data_path, args.compress_type, args.index, args.index, azure=False)
+    dump_tasks = get_dump_task(args.dumpstatus_path, args.temp_path, args.compress_type, args.index, args.index, azure=False)
     url, dump_file, cur_progress, total_num = dump_tasks.assign_task()
-    download_on_demand(url, dump_file, args.data_path, args.compress_type)
-    output_file = dump_file.replace(args.compress_type, "json")
+    download_on_demand(url, dump_file, args.temp_path, args.compress_type)
+
+    output_file = os.path.join(args.output_path, os.path.basename(dump_file.replace(args.compress_type, "json")))
     logging.debug("Dumped to " + dump_file + " processing to " + output_file)
 
     ## add the filtering criteria and processing steps here. Each step is self-contained and removable

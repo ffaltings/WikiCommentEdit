@@ -53,7 +53,7 @@ def process(task_id, wiki_stream, output_stream,
 
     try:
         records = split_records(wiki_stream, azure)
-        records = itertools.islice(records, 1000) # local debugging
+        ##records = itertools.islice(records, 1000) # local debugging
 
         for page_title, page_id, revision in records:
             revision_count += 1
