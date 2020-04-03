@@ -7,11 +7,16 @@ import bz2
 import io
 import codecs
 import collections
+
 import numpy as np
+import mwparserfromhell
 
 import spacy
 from tqdm import tqdm
 from nltk.translate.bleu_score import sentence_bleu
+from nltk import word_tokenize
+from sentence_splitter import SentenceSplitter
+
 
 from azure.storage.blob import BlobServiceClient, BlobClient
 
@@ -201,7 +206,6 @@ def split_into_sections(text):
     section_splits = re.split(section_title_pattern, text, flags=re.MULTILINE)
     section_texts = section_splits[::2]
     section_titles = ['Lead'] + section_splits[1::2]
-    section_texts = [cleanWikiText(t) for t in section_texts]
     section_titles = [t.strip('= ') for t in section_titles]
 
     return section_texts, section_titles
@@ -220,14 +224,30 @@ def split_edits(source_text, target_text, k=5):
     tgt_sect_dict = {title: text for title,text in zip(target_titles,\
             target_sections)}
 
+    splitter = SentenceSplitter(language='en')
+
     for src_sect, src_title in zip(source_sections, source_titles):
         if src_title in tgt_sect_dict.keys():
             tgt_sect = tgt_sect_dict[src_title]
         else:
             continue
 
-        source_sentences, _ = tokenizeText(src_sect)
-        target_sentences, _ = tokenizeText(tgt_sect)
+        # retrieve references from text
+        src_sect, src_references = retrieveReferences(src_sect)
+        tgt_sect, tgt_references = retrieveReferences(tgt_sect)
+        
+        # strip text of markup using mwparserfromhell
+        src_sect = str(mwparserfromhell.parse(src_sect).strip_code())
+        tgt_sect = str(mwparserfromhell.parse(tgt_sect).strip_code())
+
+        source_sentences = splitter.split(src_sect) 
+        target_sentences = splitter.split(tgt_sect)
+
+        # empty lines get split into empty sentences!
+        source_sentences = [word_tokenize(s) for s in source_sentences if\
+                len(s)]
+        target_sentences = [word_tokenize(s) for s in target_sentences if\
+                len(s)]
 
         for i, src_sent in enumerate(source_sentences):
             min_idx = max(i-k, 0)
@@ -254,9 +274,7 @@ def split_edits(source_text, target_text, k=5):
                 continue
             elif not source_diff and target_diff:
                 if is_contiguous(target_diff): yield src_sent, tgt_sent,\
-                        src_lctx, tgt_lctx
-          
-
+                        src_lctx, tgt_lctx, source_diff, target_diff
 
 
 def sampleNext(sample_ratio):
@@ -284,7 +302,7 @@ def checkComment(comment, comment_tokens, min_comment_length):
 clean the wiki text
 E.g. "[[link name]] a&quot; bds&quot; ''markup''" to "link name a bds markup"
 '''
-def cleanWikiText(wiki_text):
+def cleanWikiText(wiki_text): # use mwparserfromhell instead
     '''
     Cleans wikipedia text and retrieves references
     '''
@@ -332,9 +350,9 @@ def retrieveReferences(text):
         span = match.span()
         deref_text += text[prev_idx:span[0]]
         prev_idx = span[1]
-        deref_text += " (ref {}) ".format(ref_counter)
+        #deref_text += " (ref {}) ".format(ref_counter)
         ref_counter += 1
-        ref_list.append(match.string)
+        ref_list.append(text[span[0]:span[1]])
 
     return deref_text, ref_list
 
