@@ -55,22 +55,17 @@ if __name__ == "__main__":
     output_file = os.path.join(args.output_path, os.path.basename(dump_file.replace(args.compress_type, "json")))
     logging.debug("Dumped to " + dump_file + " processing to " + output_file)
 
-    ## add the filtering criteria and processing steps here. Each step is self-contained and removable
-    filters_and_processors = [
-        ExcludePageTypes(["Talk:"]),
-        CommentLength(20, 200),
-        CommentBlocklist(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
-        CommentTokenLength(2, 1000),
-        HasSectionTitle(),
-        TextLength(0, 1000000),
-        HasGrounding(look_in_src=True, look_in_tgt=True),
-        ExtractLeftRightContext(5, 5)
-    ]
-
     ## add filtering criteria and processing steps here. Each step is self-contained and removable
     base_generator = generate_revision_pairs
     processors = [
+        exclude_page_types(["Talk:"]),
+        has_section_title,
+        comment_length(20, 200),
+        comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
+        comment_token_length(2, 1000),
+        text_length(5, 10000000),
         generate_section_pairs,
+        has_grounding(look_in_src=True, look_in_tgt=True),
         tokenize,
         create_diffs(ctx_window_size=5),
         generate_sentence_level
@@ -93,4 +88,3 @@ if __name__ == "__main__":
     if args.delete_temp_files:
         os.remove(dump_file)
         logging.debug("Removed temporary file " + dump_file)
-        
