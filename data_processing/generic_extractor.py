@@ -64,17 +64,21 @@ def generate_section_pairs(meta):
         meta["tgt_text"] = extractSectionText(meta["tgt_text"], meta["section_title"])
         meta['diff_url'] = 'https://en.wikipedia.org/w/index.php?title=' + \
             meta["page_title"].replace(" ",'%20') + '&type=revision&diff=' + meta["rev_id"] + '&oldid=' + meta["parent_id"]
+
+        # only yield pairs that are not empty
+        if meta["src_text"] and meta["tgt_text"]:
+            yield meta
     except:
         # don't yield anything if any exception happens
         logging.error("Regex error in " + str(meta['page_id']))
         return
-    yield meta
+
 
 def tokenize(instance):
     instance['src_sents'], instance['src_tokens'] = tokenizeText(instance['src_text'])
     instance['tgt_sents'], instance['tgt_tokens'] = tokenizeText(instance['tgt_text'])
 
-    if instance['src_sents'] == None or instance['tgt_sents']:
+    if instance['src_sents'] == None or instance['tgt_sents'] == None:
         return
 
     yield instance
