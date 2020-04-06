@@ -15,7 +15,6 @@ import spacy
 from tqdm import tqdm
 from nltk.translate.bleu_score import sentence_bleu
 from nltk import word_tokenize
-from sentence_splitter import SentenceSplitter
 
 
 from azure.storage.blob import BlobServiceClient, BlobClient

@@ -15,7 +15,8 @@ from wiki_dump_download import existFile, get_dump_task
 from generator_chaining import chain_generators
 from custom_filters import *
 from custom_extractors import *
-from wikiatomic_extractor_st import *
+from generic_extractor import *
+#from wikiatomic_extractor_st import *
 
 def download_on_demand(url, dump_file, temp_path, compress_type):
     # Hack for HPC: cert verification issues
@@ -67,24 +68,19 @@ if __name__ == "__main__":
     ]
 
     ## add filtering criteria and processing steps here. Each step is self-contained and removable
+    base_generator = generate_revision_pairs
     processors = [
-        splitSections,
-        processRefs,
-        stripMarkup,
+        generate_section_pairs,
         tokenize,
-        splitSentences(k=5),
-        diffText
+        create_diffs(ctx_window_size=5),
+        generate_sentence_level
     ]
-
-    ## chose extractor here, determines how each instance is serialized to output_stream
-    extractor = TsvExtractor(["comment"])
-    extractor = NDJsonExtractor()
 
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
     json_output_stream = io.StringIO() if args.azure else open(output_file, "w", buffering=1, encoding='utf-8')
+    ## chose extractor here
 
-    base_generator = generate_revisions
-
+    extractor = NDJsonExtractor()
     process(wiki_input_stream, json_output_stream, extractor=extractor, base_generator=base_generator, processors=processors)
     
     wiki_input_stream.close()
