@@ -1,0 +1,135 @@
+"""
+Idea: Filters as first-class objects can be stacked at runtime.
+"""
+
+import re
+
+class WikiFilter():
+    """WikiFilters are callables supporting any of apply_meta, apply_instance, apply_pre_diff, apply_post_diff"""
+
+    def apply_meta(self, meta):
+        """Applied when meta data is parsed"""
+        return True
+
+    def apply_pre_diff(self, instance):
+        """Applied before tokenization and before diff is computed"""
+        return True
+
+    def apply_post_diff(self, instance):
+        """Applied after tokenization and after diff is computed"""
+        return True
+
+    def apply_instance(self, instance):
+        """Applied to the final instance"""
+        return True
+
+
+class PageIdFilter(WikiFilter):
+    def __init__(self, accepted_ids):
+        self.accepted_ids = accepted_ids
+
+    def apply_meta(self, meta):
+        return meta["page_id"] in self.accepted_ids
+
+class CommentLength(WikiFilter):
+    def __init__(self, min_len, max_len):
+        self.min_len = min_len
+        self.max_len = max_len
+
+    def apply_meta(self, meta):
+        clen = len(meta["comment_text"])
+        return clen >= self.min_len and clen < self.max_len
+
+
+class CommentTokenLength(WikiFilter):
+
+    def __init__(self, min_len, max_len):
+        self.min_len = min_len
+        self.max_len = max_len
+
+    def apply_meta(self, meta):
+        # for this filter we don't need real tokenization, approximation is good enough
+        approx_tokens = meta["comment_text"].split(" ")
+        clen = len(approx_tokens)
+        return clen >= self.min_len and clen < self.max_len
+
+class CommentBlocklist(WikiFilter):
+    def __init__(self, exclude_words = ["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]):
+        self.exclude_words = exclude_words
+
+    def apply_meta(self, meta):
+        comment = meta["comment_text"]
+        return not any(word in comment for word in self.exclude_words)
+
+class TextLength(WikiFilter):
+    def __init__(self, min_len, max_len):
+        self.min_len = min_len
+        self.max_len = max_len
+
+    def apply_pre_diff(self, instance):
+        src_text = instance["src_text"]
+        tgt_text = instance["tgt_text"]
+        len_src = len(src_text)
+        len_tgt = len(tgt_text)
+        return src_text and tgt_text and len_src >= self.min_len and len_tgt >= self.min_len and len_src < self.max_len and len_tgt < self.max_len
+
+
+class ExcludePageTypes(WikiFilter):
+    def __init__(self, excludes_prefixes = ["Talk:"]):
+        self.excludes_prefixes = excludes_prefixes
+
+    def apply_meta(self, meta):
+        has_any_prefix = any(prefix in meta["page_title"] for prefix in self.excludes_prefixes)
+        return not has_any_prefix
+
+class HasSectionTitle(WikiFilter):
+    def apply_meta(self, meta):
+        return bool(meta["section_title"])
+
+class IsHumanEdit(WikiFilter):
+    def apply_instance(self, instance):
+        raise NotImplementedError
+
+class HasGrounding(WikiFilter):
+    def __init__(self, look_in_src = True, look_in_tgt = True):
+        self.look_in_src = look_in_src
+        self.look_in_tgt = look_in_tgt
+
+    def apply_pre_diff(self, instance):
+        
+        sources = []
+        if self.look_in_src: sources.append(instance["src_text"])
+        if self.look_in_tgt: sources.append(instance["tgt_text"])
+
+        if any("http://" in source for source in sources):
+            source_text = "".join(sources)
+            instance["grounding_urls"] = list(set(re.findall(r"http://[^\s|]+", source_text)))
+            return True
+        else:
+            return False
+
+class GroundingDomainWhitelist(WikiFilter):
+    def __init__(self, whitelist=[], whitelist_file=None):
+        if whitelist_file:
+            with open(whitelist_file, "r", encoding="utf-8") as f:
+                self.whitelist = [x.trim() for x in f.readlines()]
+        else:
+            self.whitelist = whitelist
+
+    def apply_pre_diff(self, instance):
+        instance["grounding_urls"] = [url for url in instance["grounding_urls"] if any(domain in url for domain in self.whitelist)]
+        return len(instance["grounding_urls"]) > 0
+
+class ExtractLeftRightContext(WikiFilter):
+    def __init__(self, left_window_size, right_window_size):
+        self.left_window_size = left_window_size
+        self.right_window_size = right_window_size
+
+    def apply_post_diff(self, instance):
+        if len(instance["src_action"]) < 1:
+            return False
+        start_token_idx = instance["src_action"][0]
+        end_token_idx = instance["src_action"][-1]
+
+        return True
+

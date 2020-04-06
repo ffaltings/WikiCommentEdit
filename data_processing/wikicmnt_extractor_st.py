@@ -12,7 +12,7 @@ import argparse
 import os
 import io
 
-sys.path.append('../')
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 from wiki_util import *
 from wiki_dump_download import existFile
 
@@ -79,7 +79,7 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
     prev_page_title = '' 
 
     try:
-        for page_title, revision in split_records(wiki_file, azure):
+        for page_title, page_id, revision in split_records(wiki_file, azure):
             revision_count += 1
            
             #if count_revision_only:
@@ -101,9 +101,12 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
                 comment = cleanCmntText(comment)
                 # extract the section title and the comment without section info
                 sect_title, comment = extractSectionTitle(comment)
-                revisions[rev_id] = {"comment_text":comment,
+
+                meta = {"comment_text":comment,
                         "text_length":len(text), "parent_id":parent_id,
                         "section_title":sect_title, "page_title":page_title}
+                        
+                revisions[rev_id] = meta
 
                 if revision_count % 1000 == 0:
                     logging.info("= revision" + str(revision_count) + " =")
@@ -257,7 +260,7 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
             blob_client = blob_service_client.get_blob_client(container=container_name,
                 blob=output_file)
             container_client = blob_service_client.get_container_client(container_name)
-            if existFile('processed/', output_file, container_client, azure=True):
+            if existFile('processed/', output_file, container_client, azure=2):
                 blob_client.delete_blob()
             blob_client.upload_blob(data)
 
@@ -265,6 +268,7 @@ def randSampleRev(task_id, dump_file, output_file, sample_ratio, min_cmnt_length
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--azure', action='store_true')
     parser.add_argument('--container_name', type=str, default='wikipedia-data')
     parser.add_argument('--dump_file', type=str)
     parser.add_argument('--output_file', type=str)
@@ -275,8 +279,9 @@ if __name__ == '__main__':
                     )
 
     #Azure connection
-    connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    if args.azure:
+        connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
     
     randSampleRev(1, args.dump_file, args.output_file, 1, 10, 5,
-            count_revision_only=True, azure=False)
+            count_revision_only=True, azure=args.azure)
