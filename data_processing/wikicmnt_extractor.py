@@ -10,7 +10,6 @@ import logging
 import datetime
 import threading
 
-sys.path.append('../')
 from wiki_util import *
 from wikicmnt_extractor_st import randSampleRev
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import json
 import sys, os
-sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
+
 from wiki_util import *
 from process_data import word_tokenize
 from datetime import datetime
