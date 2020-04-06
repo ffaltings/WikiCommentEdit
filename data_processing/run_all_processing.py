@@ -11,22 +11,27 @@ import bz2
 
 from azure_utils import open_azure_input_stream, upload_to_azure_output_stream
 from wiki_dump_download import existFile, get_dump_task
-from generic_extractor import process
 
+from generator_chaining import chain_generators
 from custom_filters import *
 from custom_extractors import *
-
-# Hack for HPC: cert verification issues
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
+from wikiatomic_extractor_st import *
 
 def download_on_demand(url, dump_file, temp_path, compress_type):
+    # Hack for HPC: cert verification issues
+    import ssl
+    ssl._create_default_https_context = ssl._create_unverified_context
     if not existFile(temp_path, dump_file, compress_type):
         urllib.request.urlretrieve(url, dump_file)
     else:
         logging.debug("File Exists, Skip: " + url)
     return dump_file
 
+def process(input_stream, output_stream, extractor, base_generator, processors):
+    """Applies the base_generator on input_stream, then chains processor steps in processors, finally uses extractor to write to output_stream"""
+    iterable = base_generator(input_stream)
+    results = chain_generators(iterable, processors)
+    extractor.write_all(output_stream, results)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
@@ -46,7 +51,6 @@ if __name__ == "__main__":
     dump_tasks = get_dump_task(args.dumpstatus_path, args.temp_path, args.compress_type, args.index, args.index, azure=False)
     url, dump_file, cur_progress, total_num = dump_tasks.assign_task()
     download_on_demand(url, dump_file, args.temp_path, args.compress_type)
-
     output_file = os.path.join(args.output_path, os.path.basename(dump_file.replace(args.compress_type, "json")))
     logging.debug("Dumped to " + dump_file + " processing to " + output_file)
 
@@ -62,6 +66,16 @@ if __name__ == "__main__":
         ExtractLeftRightContext(5, 5)
     ]
 
+    ## add filtering criteria and processing steps here. Each step is self-contained and removable
+    processors = [
+        splitSections,
+        processRefs,
+        stripMarkup,
+        tokenize,
+        splitSentences(k=5),
+        diffText
+    ]
+
     ## chose extractor here, determines how each instance is serialized to output_stream
     extractor = TsvExtractor(["comment"])
     extractor = NDJsonExtractor()
@@ -69,7 +83,9 @@ if __name__ == "__main__":
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
     json_output_stream = io.StringIO() if args.azure else open(output_file, "w", buffering=1, encoding='utf-8')
 
-    process(1, wiki_input_stream, json_output_stream, 1, 10, ctx_window=5, extractor=extractor, filters=filters_and_processors)
+    base_generator = generate_revisions
+
+    process(wiki_input_stream, json_output_stream, extractor=extractor, base_generator=base_generator, processors=processors)
     
     wiki_input_stream.close()
     if not args.azure:

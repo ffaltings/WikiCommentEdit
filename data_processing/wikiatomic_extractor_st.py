@@ -7,7 +7,6 @@ import argparse
 import os
 import io
 
-sys.path.append('../')
 from wiki_util import *
 
 def splitSections(revision):
@@ -51,36 +50,35 @@ def tokenize(revision):
 
     yield revision
 
-def splitSentences(revision, k=5):
-    
-    for i, s in enumerate(revision['source']['sentences']):
-        min_idx = max(i-k, 0)
-        max_idx = min(i+k, len(revision['target']['sentences']))
+def splitSentences(k=5):
+    def generator(revision):
+        for i, s in enumerate(revision['source']['sentences']):
+            min_idx = max(i-k, 0)
+            max_idx = min(i+k, len(revision['target']['sentences']))
 
-        if min_idx >= max_idx: continue
+            if min_idx >= max_idx: continue
 
-        bleu_scores = [sentence_bleu([s], revision['target']['sentences'][j])\
-                for j in range(min_idx, max_idx)]
+            bleu_scores = [sentence_bleu([s], revision['target']['sentences'][j])\
+                    for j in range(min_idx, max_idx)]
 
-        match_idx = np.argmax(bleu_scores) + min_idx
-        match_score = np.max(bleu_scores)
+            match_idx = np.argmax(bleu_scores) + min_idx
+            match_score = np.max(bleu_scores)
 
-        revision['source']['text'] = s
-        revision['target']['text'] = revision['target']['sentences'][match_idx]
-        revision['target']['match_score'] = match_score
+            revision['source']['text'] = s
+            revision['target']['text'] = revision['target']['sentences'][match_idx]
+            revision['target']['match_score'] = match_score
+            yield revision
 
-        yield revision
+    return generator
 
 def diffText(revision):
     revision['source']['diff'], revision['target']['diff'] = diffRevision(
             revision['source']['text'], revision['target']['text'])
     yield revision
 
-def sequentialProcess(task_id, wiki_stream, output_streak, azure=False, extractor=None,
-        processors = []):
+def generate_revisions(wiki_stream, stream_is_azure=False):
 
     logger = logging.getLogger(__name__)
-
     start_time = datetime.datetime.now()
 
     sample_count = 0
@@ -92,44 +90,23 @@ def sequentialProcess(task_id, wiki_stream, output_streak, azure=False, extracto
     sample_parent_text = None
     prev_page_title = ''
 
-    splitter = SentenceSplitter(language='en')
+    records = split_records(wiki_stream, stream_is_azure)
 
-    try:
-        records = split_records(wiki_stream, azure)
-        records = itertools.islice(records, 1000) # debug
+    for page_title, page_id, revision in records:
+        revision_count +=  1
+        if prev_page_title != page_title:
+            page_count += 1
+            prev_page_title = page_title
 
-        for page_title, page_id, revision in records:
-            revision_count +=  1
+        rev_id, parent_id, timestamp, username, userid, userip, comment, text = extract_data(revision)
+        comment = cleanCmntText(comment)
+        section_title, comment = extractSectionTitle(comment)
 
-            rev_id, parent_id, timestamp, username, userid, userip, comment,\
-                    text = extract_data(revision)
-            comment = cleanCmntText(comment)
-            sect_title, comment = extractSectionTitle(comment)
-
-            revision = {"page_id": page_id, "comment_text": comment, "page_title": page_title,
-                    "section_title": sec_title}
-            revision['source'] = {'text': text, 'parent_id': parent_id, 'id': rev_id}
-
-            if not all(filter.apply_meta(meta) for filter in filters):
-                continue
-
-            if prev_page_title != page_title:
-                page_count += 1
-                prev_page_title = page_title
-            
-            # check that parent id matches previous id
-            if sample_parent_id == parent_id:
-                revision['target'] = {'text': sample_parent_text, 'id': sample_parent_id}
-
-                in_list  = [revision]
-                for processor in processors:
-                    out_list = []
-                    for item in in_list:
-                        for out in processor(item):
-                            out_list.append(out)
-                    in_list = out_list
-
-            # write out_list to stream
+        revision = {"page_id": page_id, "comment_text": comment,
+            "page_title": page_title, "section_title": section_title,
+            'source': {'text': text, 'parent_id': parent_id, 'id': rev_id},
+            'target': {'text': sample_parent_text, 'id': sample_parent_id}}
+        yield revision
 
 
 def processAtomicEdits(task_id, wiki_stream, output_stream, k=5, azure=False, extractor=None,
@@ -150,104 +127,95 @@ def processAtomicEdits(task_id, wiki_stream, output_stream, k=5, azure=False, ex
 
     splitter = SentenceSplitter(language='en')
 
-    try:
-        records = split_records(wiki_stream, azure)
-        records = itertools.islice(records, 1000) # debug
+    records = split_records(wiki_stream, azure)
 
-        for page_title, page_id, revision in records:
-            revision_count +=  1
+    for page_title, page_id, revision in records:
+        revision_count +=  1
 
-            rev_id, parent_id, timestamp, username, userid, userip, comment,\
-                    text = extract_data(revision)
-            comment = cleanCmntText(comment)
-            sect_title, comment = extractSectionTitle(comment)
+        rev_id, parent_id, timestamp, username, userid, userip, comment,\
+                text = extract_data(revision)
+        comment = cleanCmntText(comment)
+        sect_title, comment = extractSectionTitle(comment)
 
-            meta = {"page_id": page_id, "comment_text": comment,
-                    "text_length": len(text), "parent_id": parend_id,
-                    "section_title": sect_title, "page_title": page_title}
+        meta = {"page_id": page_id, "comment_text": comment,
+                "text_length": len(text), "parent_id": parent_id,
+                "section_title": sect_title, "page_title": page_title}
 
-            if not all(filter.apply_meta(meta) for filter in filters):
-                continue
+        if not all(filter.apply_meta(meta) for filter in filters):
+            continue
 
-            if prev_page_title != page_title:
-                page_count += 1
-                prev_page_title = page_title
+        if prev_page_title != page_title:
+            page_count += 1
+            prev_page_title = page_title
+        
+        # check that parent id matches previous id
+        if sample_parent_id == parent_id:
             
-            # check that parent id matches previous id
-            if sample_parent_id == parent_id:
-               
-                # split into sections
-                source_sections, source_titles =\
-                    split_into_sections(sample_parent_text)
-                target_sections, target_titles =\
-                    split_into_sections(text)
-                
-                tgt_sect_dict = {title: text for title,text in\
-                        zip(target_titles, target_sections)}
+            # split into sections
+            source_sections, source_titles =\
+                split_into_sections(sample_parent_text)
+            target_sections, target_titles =\
+                split_into_sections(text)
+            
+            tgt_sect_dict = {title: text for title,text in\
+                    zip(target_titles, target_sections)}
 
-                # iterate over source sections
-                for src_sect, src_title in zip(source_sections, source_titles):
-                    # recover matching target sections
-                    try: tgt_sect = tgt_sect_dict[src_title]
-                    except KeyError: continue
-                
-                    # retrieve references
-                    src_sect, src_references = retrieveReferences(src_sect)
-                    tgt_sect, tgt_references = retrieveReferences(tgt_sect)
+            # iterate over source sections
+            for src_sect, src_title in zip(source_sections, source_titles):
+                # recover matching target sections
+                try: tgt_sect = tgt_sect_dict[src_title]
+                except KeyError: continue
+            
+                # retrieve references
+                src_sect, src_references = retrieveReferences(src_sect)
+                tgt_sect, tgt_references = retrieveReferences(tgt_sect)
 
-                    # strip markup
-                    src_sect =\
-                        str(mwparserfromhell.parse(src_sect).strip_code())
-                    tgt_sect =\
-                        str(mwparserfromhell.parse(src_sect).strip_code())
+                # strip markup
+                src_sect =\
+                    str(mwparserfromhell.parse(src_sect).strip_code())
+                tgt_sect =\
+                    str(mwparserfromhell.parse(src_sect).strip_code())
 
-                    # not sure where to put post diff filters since the
-                    # pipeline is slightly different here (processing
-                    # sentences)
-                    rev_instance = {"page_id" : page_id, "revision_id": rev_id,
-                            "parent_id": parent_id, "diff_url": diff_url,
-                            "page_title": page_title, "src_text": src_sect,
-                            "tgt_text": tgt_sect, "comment": comment,
-                            "src_references": src_references,
-                            "tgt_references": tgt_references}
+                # not sure where to put post diff filters since the
+                # pipeline is slightly different here (processing
+                # sentences)
+                rev_instance = {"page_id" : page_id, "revision_id": rev_id,
+                        "parent_id": parent_id,
+                        "page_title": page_title, "src_text": src_sect,
+                        "tgt_text": tgt_sect, "comment": comment,
+                        "src_references": src_references,
+                        "tgt_references": tgt_references}
 
-                    if not all(filter.apply_pre_diff(rev_instance) for filter
-                            in filters): continue
+                if not all(filter.apply_pre_diff(rev_instance) for filter
+                        in filters): continue
 
-                    # tokenize text
-                    source_sentences = [word_tokenize(s)\
-                            for s in splitter.split(src_sect) if len(s)]
-                    target_sentences = [word_tokenize(s)\
-                            for s in splitter.split(tgt_sect) if len(s)]
+                # tokenize text
+                source_sentences = [word_tokenize(s)\
+                        for s in splitter.split(src_sect) if len(s)]
+                target_sentences = [word_tokenize(s)\
+                        for s in splitter.split(tgt_sect) if len(s)]
 
-                    for i, src_sent in enumerate(source_sentences):
-                        min_idx = max(i-k, 0)
-                        max_idx = min(i+k, len(target_sentences)
-                        if min_idx >= max_ix: continue
+                for i, src_sent in enumerate(source_sentences):
+                    min_idx = max(i-k, 0)
+                    max_idx = min(i+k, len(target_sentences))
+                    if min_idx >= max_idx: continue
 
-                        bleu_scores = [sentence_bleu([src_sent], target_sentences[j])\
-                            for j in range(min_idx, max_idx)]
+                    bleu_scores = [sentence_bleu([src_sent], target_sentences[j])\
+                        for j in range(min_idx, max_idx)]
 
-                        match_idx = np.argmax(bleu_scores) + min_idx
-                        match_score = np.max(bleu_scores)
+                    match_idx = np.argmax(bleu_scores) + min_idx
+                    match_score = np.max(bleu_scores)
 
-                        tgt_sent = target_sentences[match_idx]
-                        tgt_lctx = target_sentences[max(match_idx-k,0):match_idxmatch_idx]
-                        src_lctx = source_sentences[max(i-k, 0):i]
+                    tgt_sent = target_sentences[match_idx]
+                    tgt_lctx = target_sentences[max(match_idx-k,0):match_idxmatch_idx]
+                    src_lctx = source_sentences[max(i-k, 0):i]
 
-                        source_diff, target_diff = diffRevision(src_sent, tgt_sent)
-
-                        #write to stream...
-
+                    source_diff, target_diff = diffRevision(src_sent, tgt_sent)
 
 def sampleEdits(dump_file, output_file):
-
     logger = logging.getLogger(__name__)
-
     json_file = open(output_file, 'w', buffering=1, encoding='utf-8')
-
     start_time = datetime.datetime.now()
-
     wiki_file = bz2.open(dump_file, 'rt', encoding='utf-8')
 
     edit_count = 0
