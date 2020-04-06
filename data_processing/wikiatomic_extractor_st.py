@@ -8,6 +8,7 @@ import os
 import io
 
 from wiki_util import *
+from nltk import word_tokenize
 
 def splitSections(revision):
     source_sections, source_titles = split_into_sections(revision['source']['text'])
@@ -23,7 +24,7 @@ def splitSections(revision):
         revision['source']['text'] = src_sect
         revision['target']['text'] = tgt_sect
         revision['source']['sect_title'] = src_title
-        revision['target']['sect_title'] = tgt_title
+        revision['target']['sect_title'] = src_title
 
         yield revision
 
