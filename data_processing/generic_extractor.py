@@ -41,10 +41,8 @@ def generate_revision_pairs(wiki_stream):
                 "rev_id": rev_id,
                 "page_id": page_id,
                 "parent_id": parent_id,
-                "src_text": text,
-                "src_text_len": len(text), 
-                "tgt_text": prev_text,
-                "tgt_text_len": len(prev_text),
+                "src_text": prev_text,
+                "tgt_text": text,
                 "comment_text":comment,
                 "section_title":sect_title,
                 "page_title": page_title,
@@ -60,6 +58,9 @@ def generate_revision_pairs(wiki_stream):
 
 def generate_section_pairs(meta):
     try:
+        if not meta["section_title"]:
+            return
+
         meta["src_text"] = extractSectionText(meta["src_text"], meta["section_title"])
         meta["tgt_text"] = extractSectionText(meta["tgt_text"], meta["section_title"])
         meta['diff_url'] = 'https://en.wikipedia.org/w/index.php?title=' + \
@@ -73,6 +74,9 @@ def generate_section_pairs(meta):
         logging.error("Regex error in " + str(meta['page_id']))
         return
 
+
+def clean_markup_form_text(instance):
+    pass # TODO!
 
 def tokenize(instance):
     instance['src_sents'], instance['src_tokens'] = tokenizeText(instance['src_text'])
@@ -101,20 +105,28 @@ def create_diffs(ctx_window_size):
         tgt_ctx_tokens, tgt_action = extContext(instance['tgt_tokens'], tgt_token_diff, ctx_window_size)
 
         instance.update({"src_token": src_ctx_tokens, "src_action": src_action,
-                            "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action})
+                        "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action})
         yield instance
 
     return generate
 
 def generate_sentence_level(instance):
     tgt_sents = instance['tgt_sents']
-    tgt_sent_diff = findSentDiff(tgt_sents, instance['tgt_tokens'], instance['tgt_token_diff'])
+    tgt_tokens = instance['tgt_tokens']
+    #src_tokens = instance['src_tokens']
+    tgt_token_diff = instance['tgt_token_diff']
+    #del instance['tgt_tokens']
+    #del instance['src_tokens']
+    del instance['tgt_sents']
+    del instance['src_sents']
+    del instance['tgt_token_diff']
+    tgt_sent_diff = findSentDiff(tgt_sents, tgt_tokens, tgt_token_diff)
 
     extracted_sentences = 0
     for i in tgt_sent_diff:
         # for each sentence instance, create a deep copy, so that filters/processors can mutate them
         sent_instance = deepcopy(instance)
-        sent_instance['edits'] = tgt_sents[i]
+        sent_instance['tgt_sentence'] = tgt_sents[i]
         sent_instance['left_sentence'] = tgt_sents[i-1] if i-1 >= 0 else None
         sent_instance['right_sentence'] = tgt_sents[i+1] if i+1 < len(tgt_sents) else None
 
