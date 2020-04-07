@@ -8,9 +8,13 @@ import os
 import io
 import itertools
 from copy import deepcopy
+from time import perf_counter 
+from nltk.tokenize import word_tokenize, sent_tokenize
 
 from wiki_util import *
 from wiki_dump_download import existFile
+
+global_perf_stats = {}
 
 def generate_revision_pairs(wiki_stream):
     logger=logging.getLogger(__name__)
@@ -22,6 +26,7 @@ def generate_revision_pairs(wiki_stream):
     prev_page_title = ''
 
     records = split_records(wiki_stream)
+    records = itertools.islice(records, 1000)
 
     for page_title, page_id, revision in records:
         revision_count += 1
@@ -78,23 +83,48 @@ def generate_section_pairs(meta):
         return
 
 
-def clean_markup_mediawikiparser(instance):
-    instance['src_text'] = str(mwparserfromhell.parse(instance['src_text'] ).strip_code())
-    instance['tgt_text'] = str(mwparserfromhell.parse(instance['tgt_text']).strip_code())
-    yield instance
-
-def tokenize(instance):
-    instance['src_sents'], instance['src_tokens'] = tokenizeText(instance['src_text'])
-    instance['tgt_sents'], instance['tgt_tokens'] = tokenizeText(instance['tgt_text'])
-
-    if instance['src_sents'] == None or instance['tgt_sents'] == None:
-        return
-
-    yield instance
-
-def create_diffs(ctx_window_size):
+def clean_markup_mediawikiparser():
+    global global_perf_stats # hack
+    global_perf_stats['clean_markup'] = stats = {"elapsed": 0.0}
 
     def generate(instance):
+        start_time = perf_counter()
+        instance['src_text'] = str(mwparserfromhell.parse(instance['src_text'] ).strip_code())
+        instance['tgt_text'] = str(mwparserfromhell.parse(instance['tgt_text']).strip_code())
+        stats['elapsed'] += perf_counter() - start_time
+        yield instance
+    return generate
+
+def tokenize(mode):
+    global global_perf_stats # hack
+    global_perf_stats['tokenize'] = stats = {"mode": mode, "elapsed": 0.0}
+
+    def nltk_version(text):
+        sentences = [word_tokenize(s) for s in sent_tokenize(text) if len(s)]
+        flattened = [t for s in sentences for t in s]
+        return sentences, flattened
+
+    tokenize = {"nltk": nltk_version, "spacy": tokenizeText}[mode]
+    def generate(instance):
+        start_time = perf_counter()
+        instance['src_sents'], instance['src_tokens'] = tokenize(instance['src_text'])
+        instance['tgt_sents'], instance['tgt_tokens'] = tokenize(instance['tgt_text'])
+        stats['elapsed'] += perf_counter() - start_time
+        if instance['src_sents'] == None or instance['tgt_sents'] == None:
+            return
+        yield instance
+
+    
+    return generate
+
+def create_diffs(ctx_window_size):
+    global global_perf_stats # hack
+    global_perf_stats['create_diffs'] = stats = {"elapsed": 0.0, "count_in": 0, "count_out": 0}
+
+    def generate(instance):
+        stats['count_in'] += 1
+        start_time = perf_counter()
+
         # extract the offset of the changed tokens in both src and tgt
         src_token_diff, tgt_token_diff = diffRevision(instance['src_tokens'], instance['tgt_tokens'])
         instance['tgt_token_diff'] = tgt_token_diff
@@ -111,6 +141,9 @@ def create_diffs(ctx_window_size):
 
         instance.update({"src_tokens": src_ctx_tokens, "src_action": src_action,
                         "tgt_tokens": tgt_ctx_tokens, "tgt_action": tgt_action})
+
+        stats['count_out'] += 1
+        stats['elapsed'] += perf_counter() - start_time
         yield instance
 
     return generate

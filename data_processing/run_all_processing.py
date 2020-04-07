@@ -66,10 +66,9 @@ if __name__ == "__main__":
         text_length(5, 10000000),
         generate_section_pairs,
         has_grounding(look_in_src=True, look_in_tgt=True),
-        clean_markup_mediawikiparser,
-        tokenize,
+        clean_markup_mediawikiparser(),
+        tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
         create_diffs(ctx_window_size=5),
-        #generate_sentence_level
     ]
 
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
@@ -85,6 +84,7 @@ if __name__ == "__main__":
     else:
         upload_to_azure_output_stream()
     logging.debug("Done with task %d" % args.index)
+    logging.info(json.dumps(global_perf_stats))
 
     if args.delete_temp_files:
         os.remove(dump_file)
