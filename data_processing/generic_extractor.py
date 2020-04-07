@@ -49,6 +49,9 @@ def generate_revision_pairs(wiki_stream):
                 "timestamp": timestamp
             }
 
+            # for next iteration, current text becomes prev_text
+            prev_text = text
+
             yield meta
 
     time_elapsed = datetime.datetime.now() - start_time
@@ -75,8 +78,10 @@ def generate_section_pairs(meta):
         return
 
 
-def clean_markup_form_text(instance):
-    pass # TODO!
+def clean_markup_mediawikiparser(instance):
+    instance['src_text'] = str(mwparserfromhell.parse(instance['src_text'] ).strip_code())
+    instance['tgt_text'] = str(mwparserfromhell.parse(instance['tgt_text']).strip_code())
+    yield instance
 
 def tokenize(instance):
     instance['src_sents'], instance['src_tokens'] = tokenizeText(instance['src_text'])
@@ -104,8 +109,8 @@ def create_diffs(ctx_window_size):
         src_ctx_tokens, src_action = extContext(instance['src_tokens'], src_token_diff, ctx_window_size)
         tgt_ctx_tokens, tgt_action = extContext(instance['tgt_tokens'], tgt_token_diff, ctx_window_size)
 
-        instance.update({"src_token": src_ctx_tokens, "src_action": src_action,
-                        "tgt_token": tgt_ctx_tokens, "tgt_action": tgt_action})
+        instance.update({"src_tokens": src_ctx_tokens, "src_action": src_action,
+                        "tgt_tokens": tgt_ctx_tokens, "tgt_action": tgt_action})
         yield instance
 
     return generate

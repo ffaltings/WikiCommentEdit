@@ -4,8 +4,6 @@ from mediawiki_parser.preprocessor import make_parser as make_preprocessor
 from mediawiki_parser.text import make_parser as make_text_parser
 preprocessor = make_preprocessor({})
 parser = make_text_parser()
-import untangle
-import difflib
 
 # parses into an AST
 from wikitextparser import parse as wtp_parse
@@ -18,7 +16,7 @@ def parse_wikimarkup(source):
     return output.value
 
 def page_iterator(xml_lines, id_filter_set = None):
-    
+    import untangle
     def process_lines(lines):
         doc = untangle.parse(StringIO("\n".join(lines)))
         return doc.page
