@@ -63,7 +63,7 @@ def has_grounding(look_in_src = True, look_in_tgt = True):
         if look_in_tgt: sources.append(instance["tgt_text"])
         if any("http://" in source for source in sources):
             source_text = "".join(sources)
-            instance["grounding_urls"] = list(set(re.findall(r"http://[^\s|]+", source_text)))
+            instance["grounding_urls"] = list(set(re.findall(r"http://[^\s|\]]+", source_text)))
             yield instance
 
     return generate

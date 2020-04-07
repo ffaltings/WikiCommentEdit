@@ -36,7 +36,7 @@ def get_dump_task(dump_status_file, data_path, compress_type, start, end, azure=
 
         file_num = 0
         for dump_file in dump_files:
-            file_name = data_path + dump_file
+            file_name = os.path.join(data_path, dump_file)
             file_list.append(file_name)
 
             # url example: https://dumps.wikimedia.org/enwiki/20180501/enwiki-20180501-pages-meta-history1.xml-p10p2123.7z

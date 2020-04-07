@@ -29,7 +29,7 @@ def download_on_demand(url, dump_file, temp_path, compress_type):
     if not existFile(temp_path, dump_file, compress_type):
         urllib.request.urlretrieve(url, dump_file)
     else:
-        logging.debug("File Exists, Skip: " + url)
+        logging.info("File Exists, Skip: " + url)
     return dump_file
 
 def scriptdir(filename):
@@ -37,9 +37,9 @@ def scriptdir(filename):
 
 def process(input_stream, output_stream, extractor, base_generator, processors):
     """Applies the base_generator on input_stream, then chains processor steps in processors, finally uses extractor to write to output_stream"""
-    iterable = tqdm(base_generator(input_stream), "baseline generator")
+    iterable = tqdm(base_generator(input_stream), "baseline generator", mininterval=3.0)
     results = chain_generators(iterable, processors)
-    for instance in tqdm(results, "final results"):
+    for instance in tqdm(results, "final results", mininterval=3.0):
         extractor.write_instance(output_stream, instance)
 
 if __name__ == "__main__":
@@ -55,14 +55,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)s) %(message)s')
 
-    logging.debug("Determining dump task..")
+    logging.info("Determining dump task..")
     dump_tasks = get_dump_task(args.dumpstatus_path, args.temp_path, args.compress_type, args.index, args.index, azure=False)
     url, dump_file, cur_progress, total_num = dump_tasks.assign_task()
     article_count = estimate_article_count_from_filename(dump_file)
 
     download_on_demand(url, dump_file, args.temp_path, args.compress_type)
-    output_file = os.path.join(args.output_path, os.path.basename(dump_file.replace(args.compress_type, "json")))
-    logging.debug("Dumped to " + dump_file + " processing to " + output_file)
+    output_file = os.path.join(args.output_path, "{}.json".format(args.index))
+    logging.info("Dumped to " + dump_file + " processing to " + output_file)
     if article_count: logging.info("Estimating count of {} articles".format(article_count))
 
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
@@ -94,5 +94,5 @@ if __name__ == "__main__":
         json_output_stream.close()
     else:
         upload_to_azure_output_stream()
-    logging.debug("Done with task %d" % args.index)
+    logging.info("Done with task %d" % args.index)
     logging.info(json.dumps(Profiled.perf_stats))
