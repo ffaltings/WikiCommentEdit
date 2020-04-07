@@ -15,6 +15,14 @@ def parse_wikimarkup(source):
     output = parser.parse(preprocessed_text.leaves())
     return output.value
 
+
+def estimate_article_count_from_filename(dump_file):
+    m = re.search(r"xml-p(\d+)p(\d+)\.", dump_file)
+    if m:
+        start, end = m.groups()
+        return int(end) - int(start)
+    return None
+    
 def page_iterator(xml_lines, id_filter_set = None):
     import untangle
     def process_lines(lines):

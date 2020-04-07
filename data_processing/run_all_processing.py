@@ -8,10 +8,12 @@ import urllib
 import os
 import io
 import bz2
+import re
 
 from tqdm import tqdm
 from azure_utils import open_azure_input_stream, upload_to_azure_output_stream
 from wiki_dump_download import existFile, get_dump_task
+from wikihelpers import estimate_article_count_from_filename
 
 from profiling import Profiled
 from generator_chaining import chain_generators
@@ -50,40 +52,42 @@ if __name__ == "__main__":
     parser.add_argument('--output-path', type=str, default="./data/out/", help='the output directory')
     parser.add_argument('--compress-type', type=str, default='bz2', help='the compressed file type to download: 7z or bz2 [default: bz2]')
     parser.add_argument('--azure', action='store_true')
-    parser.add_argument('--delete-temp-files', action='store_true', help='if set, temporary files are deleted again after run is complete')
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)s) %(message)s')
 
     logging.debug("Determining dump task..")
     dump_tasks = get_dump_task(args.dumpstatus_path, args.temp_path, args.compress_type, args.index, args.index, azure=False)
     url, dump_file, cur_progress, total_num = dump_tasks.assign_task()
+    article_count = estimate_article_count_from_filename(dump_file)
+
     download_on_demand(url, dump_file, args.temp_path, args.compress_type)
     output_file = os.path.join(args.output_path, os.path.basename(dump_file.replace(args.compress_type, "json")))
     logging.debug("Dumped to " + dump_file + " processing to " + output_file)
-
-    ## add filtering criteria and processing steps here. Each step is self-contained and removable
-    base_generator = generate_revision_pairs
-    processors = [
-        has_section_title,
-        comment_length(20, 200),
-        exclude_page_types(["Talk:"]),
-        comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
-        comment_token_length(2, 1000),
-        text_length(5, 10000000),
-        generate_section_pairs,
-        has_grounding(look_in_src=True, look_in_tgt=True),
-        grounding_domain_whitelist(file=scriptdir("domains-official.txt")),
-        clean_markup_mediawikiparser,
-        tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
-        create_diffs(ctx_window_size=5),
-    ]
+    if article_count: logging.info("Estimating count of {} articles".format(article_count))
 
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
     json_output_stream = io.StringIO() if args.azure else open(output_file, "w", buffering=1, encoding='utf-8')
-    ## chose extractor here
 
-    extractor = NDJsonExtractor()
-    process(wiki_input_stream, json_output_stream, extractor=extractor, base_generator=base_generator, processors=processors)
+    process(
+        wiki_input_stream,
+        json_output_stream,
+        extractor = NDJsonExtractor(), # chose extractor here
+        base_generator = generate_revision_pairs, # chose base generator here
+        processors = [ # chose processing and filtering steps here
+            has_section_title,
+            comment_length(20, 200),
+            exclude_page_types(["Talk:"]),
+            comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
+            comment_token_length(2, 1000),
+            text_length(5, 10000000),
+            generate_section_pairs,
+            has_grounding(look_in_src=True, look_in_tgt=True),
+            grounding_domain_whitelist(file=scriptdir("domains-official.txt")),
+            clean_markup_mediawikiparser,
+            tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
+            create_diffs(ctx_window_size=5),
+        ]
+    )
     
     wiki_input_stream.close()
     if not args.azure:
@@ -92,7 +96,3 @@ if __name__ == "__main__":
         upload_to_azure_output_stream()
     logging.debug("Done with task %d" % args.index)
     logging.info(json.dumps(Profiled.perf_stats))
-
-    if args.delete_temp_files:
-        os.remove(dump_file)
-        logging.debug("Removed temporary file " + dump_file)
