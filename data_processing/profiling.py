@@ -1,8 +1,9 @@
 from time import perf_counter
+from collections import OrderedDict
 
 class Profiled:
     """Helper class to add static profiling of functions and generators"""
-    perf_stats = {}
+    perf_stats = OrderedDict()
 
     @classmethod
     def generator(cls, gen_func):
