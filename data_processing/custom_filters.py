@@ -3,6 +3,7 @@ Contains self-contained isolated filters/processors implemented as python genera
 """
 
 import re
+from profiling import Profiled
 
 def page_id_filter(accepted_ids):
     def generate(meta):
@@ -52,7 +53,7 @@ def has_section_title(instance):
     if instance['section_title']:
         yield instance
 
-def is_human_edit( instance):
+def is_human_edit(instance):
     raise NotImplementedError
 
 def has_grounding(look_in_src = True, look_in_tgt = True):
@@ -67,17 +68,19 @@ def has_grounding(look_in_src = True, look_in_tgt = True):
 
     return generate
 
-def grounding_domain_whitelist(whitelist=[], whitelist_file=None):
-    if whitelist_file:
-        with open(whitelist_file, "r", encoding="utf-8") as f:
-            whitelist = [x.trim() for x in f.readlines()]
+def grounding_domain_whitelist(whitelist=[], file=None):
+    if file:
+        with open(file, "r", encoding="utf-8") as f:
+            whitelist = [x.strip() for x in f.readlines()]
+    whitelist = ["://" + x for x in whitelist]
 
-    def generate(instance):
+    @Profiled.generator
+    def grounding_domain_whitelist(instance):
         instance["grounding_urls"] = [url for url in instance["grounding_urls"] if any(domain in url for domain in whitelist)]
         if len(instance["grounding_urls"]) > 0:
             yield instance
 
-    return generate
+    return grounding_domain_whitelist
 
 
 def extract_left_right_context(left_window_size, right_window_size):

@@ -4,9 +4,6 @@ class Extractor():
     def write_instance(self, output_stream, instance_dict):
         pass
 
-    def write_all(self, output_stream, instance_iterable):
-        for instance in instance_iterable:
-            self.write_instance(output_stream, instance)
 
 class NDJsonExtractor(Extractor):
     def write_instance(self, output_stream, instance_dict):

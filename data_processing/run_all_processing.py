@@ -9,6 +9,7 @@ import os
 import io
 import bz2
 
+from tqdm import tqdm
 from azure_utils import open_azure_input_stream, upload_to_azure_output_stream
 from wiki_dump_download import existFile, get_dump_task
 
@@ -29,11 +30,15 @@ def download_on_demand(url, dump_file, temp_path, compress_type):
         logging.debug("File Exists, Skip: " + url)
     return dump_file
 
+def scriptdir(filename):
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+
 def process(input_stream, output_stream, extractor, base_generator, processors):
     """Applies the base_generator on input_stream, then chains processor steps in processors, finally uses extractor to write to output_stream"""
-    iterable = base_generator(input_stream)
+    iterable = tqdm(base_generator(input_stream), "baseline generator")
     results = chain_generators(iterable, processors)
-    extractor.write_all(output_stream, results)
+    for instance in tqdm(results, "final results"):
+        extractor.write_instance(output_stream, instance)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
@@ -67,6 +72,7 @@ if __name__ == "__main__":
         text_length(5, 10000000),
         generate_section_pairs,
         has_grounding(look_in_src=True, look_in_tgt=True),
+        grounding_domain_whitelist(file=scriptdir("domains-official.txt")),
         clean_markup_mediawikiparser,
         tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
         create_diffs(ctx_window_size=5),
