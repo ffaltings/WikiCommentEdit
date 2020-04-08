@@ -111,31 +111,61 @@ def tokenize(mode):
     
     return tokenize
 
-def create_diffs(ctx_window_size):
 
+
+@Profiled.generator
+def compute_diff(instance):
+    # extract the offset of the changed tokens in both src and tgt
+    src_token_diff, tgt_token_diff = diffRevision(instance['src_tokens'], instance['tgt_tokens'])
+    instance['tgt_token_diff'] = tgt_token_diff
+    instance['src_token_diff'] = src_token_diff
+
+    if len(src_token_diff) == 0 and len(tgt_token_diff) == 0:
+        return
+
+    if (len(src_token_diff) > 0 and src_token_diff[0] < 0) or (
+            len(tgt_token_diff) > 0 and tgt_token_diff[0] < 0):
+        return
+
+    yield instance
+
+
+def group_by_continuous(num_iterable):
+    """Creates a nested iterable based on an iterable of numbers, where each sub-list is continuous"""
+    buffer = []
+    for i in num_iterable:
+        if buffer and buffer[-1] + 1 == i:
+            buffer.append(i)
+        else:
+            if buffer: yield buffer
+            buffer = [i]
+    if buffer: yield buffer
+
+def find_continous_edits(instance):
+    instance['tgt_token_diffs'] = list(group_by_continuous(instance['tgt_token_diff']))
+    instance['src_token_diffs'] = list(group_by_continuous(instance['src_token_diffs']))
+    yield instance
+
+def filter_additions(min_length, max_length):
+    def filter_additions(instance):
+        len_tgt_diff = len(instance['tgt_token_diff'])
+        len_src_diff = len(instance['src_token_diff'])
+        if len_tgt_diff >= min_length and len_tgt_diff < max_length and len_src_diff == 0:
+            yield instance
+    return filter_additions
+
+def extract_context_around_diff(ctx_window_size):
+    """Creates a context window around the diff, based on tokens to be added to the left/right"""
+    
     @Profiled.generator
-    def create_diffs(instance):
-
-        # extract the offset of the changed tokens in both src and tgt
-        src_token_diff, tgt_token_diff = diffRevision(instance['src_tokens'], instance['tgt_tokens'])
-        instance['tgt_token_diff'] = tgt_token_diff
-
-        if len(src_token_diff) == 0 and len(tgt_token_diff) == 0:
-            return
-
-        if (len(src_token_diff) > 0 and src_token_diff[0] < 0) or (
-                len(tgt_token_diff) > 0 and tgt_token_diff[0] < 0):
-            return
-
-        src_ctx_tokens, src_action = extContext(instance['src_tokens'], src_token_diff, ctx_window_size)
-        tgt_ctx_tokens, tgt_action = extContext(instance['tgt_tokens'], tgt_token_diff, ctx_window_size)
+    def extract_context(instance):
+        src_ctx_tokens, src_action = extContext(instance['src_tokens'], instance['src_token_diff'], ctx_window_size)
+        tgt_ctx_tokens, tgt_action = extContext(instance['tgt_tokens'], instance['tgt_token_diff'], ctx_window_size)
 
         instance.update({"src_tokens": src_ctx_tokens, "src_action": src_action,
                         "tgt_tokens": tgt_ctx_tokens, "tgt_action": tgt_action})
-
         yield instance
-
-    return create_diffs
+    return extract_context
 
 def generate_sentence_level(instance):
     tgt_sents = instance['tgt_sents']
