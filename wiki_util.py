@@ -8,8 +8,15 @@ import io
 import codecs
 import collections
 
+import numpy as np
+import mwparserfromhell
+
 import spacy
 from tqdm import tqdm
+from nltk.translate.bleu_score import sentence_bleu
+from nltk import word_tokenize
+from sentence_splitter import SentenceSplitter
+
 
 from azure.storage.blob import BlobServiceClient, BlobClient
 
@@ -196,6 +203,82 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
         else:
             text_buffer = text_buffer[cur_index:]
 
+def split_into_sections(text):
+    section_title_pattern = '(^=+\s*.+\s*=+$)'
+    section_splits = re.split(section_title_pattern, text, flags=re.MULTILINE)
+    section_texts = section_splits[::2]
+    section_titles = ['Lead'] + section_splits[1::2]
+    section_titles = [t.strip('= ') for t in section_titles]
+
+    return section_texts, section_titles
+
+def is_contiguous(seq):
+    '''
+    Check if ordered (ascending) sequence of numbers is contiguous
+    '''
+
+    return (seq[-1] - seq[0]) == (len(seq) - 1)
+
+def split_edits(source_text, target_text, k=5):
+    source_sections, source_titles = split_into_sections(source_text)
+    target_sections, target_titles = split_into_sections(target_text)
+
+    tgt_sect_dict = {title: text for title,text in zip(target_titles,\
+            target_sections)}
+
+    splitter = SentenceSplitter(language='en')
+
+    for src_sect, src_title in zip(source_sections, source_titles):
+        if src_title in tgt_sect_dict.keys():
+            tgt_sect = tgt_sect_dict[src_title]
+        else:
+            continue
+
+        # retrieve references from text
+        src_sect, src_references = retrieveReferences(src_sect)
+        tgt_sect, tgt_references = retrieveReferences(tgt_sect)
+        
+        # strip text of markup using mwparserfromhell
+        src_sect = str(mwparserfromhell.parse(src_sect).strip_code())
+        tgt_sect = str(mwparserfromhell.parse(tgt_sect).strip_code())
+
+        source_sentences = splitter.split(src_sect) 
+        target_sentences = splitter.split(tgt_sect)
+
+        # empty lines get split into empty sentences!
+        source_sentences = [word_tokenize(s) for s in source_sentences if\
+                len(s)]
+        target_sentences = [word_tokenize(s) for s in target_sentences if\
+                len(s)]
+
+        for i, src_sent in enumerate(source_sentences):
+            min_idx = max(i-k, 0)
+            max_idx = min(i+k, len(target_sentences))
+            if min_idx >= max_idx:
+                continue
+            bleu_scores = [sentence_bleu([src_sent], target_sentences[j])\
+                    for j in range(min_idx, max_idx)]
+            try:
+                match_idx = np.argmax(bleu_scores) + min_idx
+                match_score = np.max(bleu_scores)
+            except ValueError as e:
+                print(min_idx, max_idx, len(bleu_scores))
+                raise e
+
+            tgt_sent = target_sentences[match_idx]
+            tgt_lctx = target_sentences[max(match_idx-k,0):match_idx]
+            src_lctx = source_sentences[max(i-k, 0):i]
+
+            source_diff, target_diff = diffRevision(src_sent, tgt_sent)
+            if source_diff and not target_diff: #deletion
+                #if is_contiguous(source_diff): yield src_sent, tgt_sent,\
+                        #tgt_lctx
+                continue
+            elif not source_diff and target_diff:
+                if is_contiguous(target_diff): yield src_sent, tgt_sent,\
+                        src_lctx, tgt_lctx, source_diff, target_diff
+
+
 def sampleNext(sample_ratio):
     return random.random() < sample_ratio
 
@@ -221,8 +304,14 @@ def checkComment(comment, comment_tokens, min_comment_length):
 clean the wiki text
 E.g. "[[link name]] a&quot; bds&quot; ''markup''" to "link name a bds markup"
 '''
-def cleanWikiText(wiki_text):
+def cleanWikiText(wiki_text): # use mwparserfromhell instead
+    '''
+    Cleans wikipedia text and retrieves references
+    '''
 
+    # resolve [[Category|name]] links
+    wiki_text = re.sub('\[\[[^\[\]]+\|([^\[\]]+)\]\]', r'\1', wiki_text) 
+    
     # replace link: [[link_name]] and quotes
     wiki_text = re.sub("\[\[", "", wiki_text)
     wiki_text = re.sub("\]\]", "", wiki_text)
@@ -235,9 +324,39 @@ def cleanWikiText(wiki_text):
     # wiki_text = re.sub("&amp;", "&", wiki_text)
 
     # use html unescape to decode the html special characters
-    wiki_text = html.unescape(wiki_text)
+    #wiki_text = html.unescape(wiki_text) # do outside of cleanText
+
+    # remove markup
+    html_elements = [
+        '<table.*>.*</table>', #tables
+        '<!--[^<>]*-->', # comments
+        '<\w+>[^<>]*</\w+>',
+        '<\w+>|<\w+/>', # html tags
+        '{{[^{}]*}}', # wikipedia elements
+        '&nbsp;'
+    ]
+    for pattern in html_elements:
+        wiki_text = re.sub(pattern, '', wiki_text, flags=re.DOTALL)
+
+    wiki_text = wiki_text.strip('\n')
 
     return wiki_text
+
+def retrieveReferences(text):
+    deref_text = ''
+    prev_idx = 0
+    reference_pattern = '<ref[^<>]*/>|<ref[^<>]*>[^<>]*</ref>|\{\{sfn\|[^{}]*\}\}'
+    ref_counter = 0
+    ref_list = []
+    for match in re.finditer(reference_pattern, text):
+        span = match.span()
+        deref_text += text[prev_idx:span[0]]
+        prev_idx = span[1]
+        #deref_text += " (ref {}) ".format(ref_counter)
+        ref_counter += 1
+        ref_list.append(text[span[0]:span[1]])
+
+    return deref_text, ref_list
 
 def tokenizeText(text):
     doc = nlp(text)
