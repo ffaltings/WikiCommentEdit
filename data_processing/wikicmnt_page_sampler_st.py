@@ -6,7 +6,6 @@ import argparse
 import os
 import io
 
-sys.path.append('../')
 from wiki_util import *
 
 def randSamplePage(task_id, dump_file, output_file, sample_ratio):

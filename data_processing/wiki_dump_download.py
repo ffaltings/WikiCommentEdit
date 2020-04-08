@@ -15,10 +15,7 @@ from datetime import datetime
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
 
-
-
-def download(dump_status_file, data_path, compress_type, start, end,
-        thread_num, azure=False):
+def get_dump_task(dump_status_file, data_path, compress_type, start, end, azure=False):
     url_list = []
     file_list = []
     with open(dump_status_file) as json_data:
@@ -27,7 +24,7 @@ def download(dump_status_file, data_path, compress_type, start, end,
         dump_dict = history_dump['files']
         dump_files = sorted(list(dump_dict.keys()))
 
-        if args.end > 0 and args.end <= len(dump_files):
+        if end > 0 and end <= len(dump_files):
             dump_files = dump_files[start - 1:end]
         else:
             dump_files = dump_files[start - 1:]
@@ -35,11 +32,11 @@ def download(dump_status_file, data_path, compress_type, start, end,
         # print all files to be downloaded.
         print("All files to download ...")
         for i, file in enumerate(dump_files):
-            print(i + args.start, file)
+            print(i + start, file)
 
         file_num = 0
         for dump_file in dump_files:
-            file_name = data_path + dump_file
+            file_name = os.path.join(data_path, dump_file)
             file_list.append(file_name)
 
             # url example: https://dumps.wikimedia.org/enwiki/20180501/enwiki-20180501-pages-meta-history1.xml-p10p2123.7z
@@ -51,6 +48,12 @@ def download(dump_status_file, data_path, compress_type, start, end,
         json_data.close()
 
     task = WikiDumpTask(file_list, url_list)
+    return task
+
+def download(dump_status_file, data_path, compress_type, start, end,
+        thread_num, azure=False):
+   
+    task = get_dump_task(dump_status_file, data_path, compress_type, start, end, azure)
     threads = []
     for i in range(thread_num):
         t = threading.Thread(target=worker, args=(i, task, azure))
@@ -64,9 +67,9 @@ def download(dump_status_file, data_path, compress_type, start, end,
             t.join()
 
 
-def existFile(data_path, cur_file, container_client=None, azure=False):
+def existFile(data_path, cur_file, compress_type, container_client=None, azure=False):
     if not azure:
-        exist_file_list = glob.glob(data_path + "*." + args.compress_type)
+        exist_file_list = glob.glob(data_path + "*." + compress_type)
     else:
         exist_file_list = [b.name for b in container_client.list_blobs() if data_path in b.name]
     exist_file_names = [os.path.basename(i) for i in exist_file_list]
@@ -94,7 +97,7 @@ def verify(dump_status_file, compress_type, data_path):
         for i, (file, value) in enumerate(dump_dict.items()):
             gt_md5 = value['md5']
             print("#", i, " ", file, ' ', value['md5'], sep='')
-            if existFile(data_path, file):
+            if existFile(data_path, file, compress_type):
                 file_md5 = md5(data_path + file)
                 if file_md5 == gt_md5:
                     pass_files.append(file)
@@ -162,13 +165,20 @@ worker is main function for each thread.
 def worker(work_id, tasks, azure=False):
     logging.debug('Starting.')
 
+    # Azure connection
+    container_client = None
+    if azure:
+        connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+        container_client = blob_service_client.get_container_client(args.container_name)
+
     # grab one task from task_list
     while 1:
         url, file_name, cur_progress, total_num = tasks.assign_task()
         if not url:
             break
         logging.debug('Assigned task (' + str(cur_progress) + '/' + str(total_num) + '): ' + str(url))
-        if not existFile(args.data_path, file_name, container_client, azure):
+        if not existFile(args.data_path, file_name, args.compress_type, container_client, azure):
             if not azure:
                 urllib.request.urlretrieve(url, file_name)
             else:
@@ -205,11 +215,6 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)s) %(message)s',
                     )
-    # Azure connection
-    if args.azure:
-        connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-        container_client = blob_service_client.get_container_client(args.container_name)
 
     start_time = datetime.now()
     main()

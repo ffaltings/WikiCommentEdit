@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 import json
-import sys
-sys.path.append('../')
+import sys, os
+
 from wiki_util import *
 from process_data import word_tokenize
+from datetime import datetime
+import argparse
 
 def extract_json(input_file, output_file, ctx_window=10, negative_edit_num=10):
 
@@ -97,11 +99,16 @@ def extract_json(input_file, output_file, ctx_window=10, negative_edit_num=10):
 
 def main():
 
-    root_path = "../dataset/raw/"
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data-path', type=str, default="../dataset/raw/", help='the data directory')
+    parser.add_argument('--index', type=int, help='the index of the file to process')
+    args = parser.parse_args()
+
+    root_path = args.data_path
     data_path = root_path + "split_files/"
     output_path = root_path + "output/"
 
-    file_idx = int(sys.argv[1])
+    file_idx = args.index
 
     dump_list = sorted(glob.glob(data_path + "*.json"))
     dump_file = dump_list[file_idx - 1]

@@ -14,7 +14,7 @@ UNK = "-UNK-"
 ENT = "-ENT-"
 
 # initialize the spacy
-nlp = spacy.load('en')
+nlp = spacy.load('en_core_web_sm') # was 'en'
 
 
 def word_tokenize(text):

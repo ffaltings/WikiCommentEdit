@@ -7,7 +7,7 @@ import torch
 
 from process_data import _make_char_vector, _make_word_vector, gen_cmntrank_batches, gen_editanch_batches
 from process_data import to_var, make_vector
-from wiki_util import tokenizeText
+from data_processing.wiki_util import tokenizeText
 
 
 ## general evaluation

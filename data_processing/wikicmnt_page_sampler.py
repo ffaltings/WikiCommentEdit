@@ -6,7 +6,6 @@ import datetime
 import threading
 import multiprocessing
 
-sys.path.append('../')
 from wiki_util import *
 from wikicmnt_page_sampler_st import randSamplePage
 from wikicmnt_extractor import WikiSampleTask
