@@ -6,9 +6,11 @@ import json
 import argparse
 import os
 import io
+import wiki_util
 
 sys.path.append('../')
 from wiki_util import *
+from wiki_dump_download import existFile
 
 #def splitSections(revision):
 #    source_sections, source_titles = split_into_sections(revision['source']['text'])
@@ -292,7 +294,7 @@ def sampleEdits(dump_file, output_file):
             prev_comment = comment
             prev_text = text
 
-           # if edit_count >= 50: break
+            if edit_count >= 1: break
 
     finally:
         time_elapsed = datetime.datetime.now() - start_time
@@ -306,15 +308,32 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dump_file', type=str,\
-            default='/mnt/nlp-storage/data/raw/wikipedia-subsample/enwiki-sample-history1.xml-p1037p2028.txt.bz2')
+            default='raw/wikipedia-subsample/enwiki-sample-history1.xml-p1037p2028.txt.bz2')
     parser.add_argument('--output_file', type=str,\
-            default='/mnt/nlp-storage/data/processed/atomic-edits/enwiki-sample-p1037p2028.json')
+            default='processed/atomic-edits/enwiki-sample-p1037p2028.json')
+    parser.add_argument('--container_name', type=str,\
+            default='wikipedia-data')
     args = parser.parse_args()
+
+    connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    blob_client = blob_service_client.get_blob_client(container=args.container_name,\
+            blob=args.dump_file)
+    with open('input.text.bz', 'wb') as download_file:
+        download_file.write(blob_client.download_blob().readall())    
 
     logging.basicConfig(level=logging.DEBUG,
             format='(%(threadName)s) (%(name)s) %(message)s',
             )
     
-    sampleEdits(args.dump_file, args.output_file)
+    sampleEdits('input.text.bz','output.json')
+
+    blob_client = blob_service_client.get_blob_client(container=args.container_name,\
+            blob=args.output_file)
+    container_client = blob_service_client.get_container_client(args.container_name)
+    if existFile('processed/', args.output_file, container_client, azure=True):
+        blob_client.delete_blob()
+    with open('output.json', 'rb') as data:
+        blob_client.upload_blob(data)
 
 

@@ -11,8 +11,10 @@ import collections
 import numpy as np
 import mwparserfromhell
 
-import spacy
+#import spacy
 from tqdm import tqdm
+import nltk
+nltk.data.path.append('./nltk_data/')
 from nltk.translate.bleu_score import sentence_bleu
 from nltk import word_tokenize
 from sentence_splitter import SentenceSplitter
@@ -25,7 +27,7 @@ RevisionMETA = collections.namedtuple("RevisionMETA", ['comment_text',
 
 
 # initialize the spacy
-nlp = spacy.load('en')
+#nlp = spacy.load('en')
 
 '''
 Extract the contents by delimitors
