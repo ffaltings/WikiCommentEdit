@@ -2,7 +2,6 @@
 
 import sys
 
-sys.path.append('../')
 from wiki_util import *
 
 

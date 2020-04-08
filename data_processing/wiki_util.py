@@ -15,7 +15,6 @@ import spacy
 from tqdm import tqdm
 from nltk.translate.bleu_score import sentence_bleu
 from nltk import word_tokenize
-from sentence_splitter import SentenceSplitter
 
 
 from azure.storage.blob import BlobServiceClient, BlobClient
@@ -141,6 +140,7 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
         decoder = codecs.getincrementaldecoder('utf-8')()
 
     page_title = ""
+    page_id = ""
 
     while True:
         if not azure:
@@ -164,17 +164,19 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
         PAGE_START = "<page>"
         PAGE_TITLE_START = "<title>"
         PAGE_TITLE_END = "</title>"
+        prev_page_start_index = 0
         while True:
             page_start_index = text_buffer.find(PAGE_START, cur_index)
-            if page_start_index != -1:
+            if page_start_index != -1 and page_start_index != prev_page_start_index:
                 # update the current page title/ID
-                page_title, _ = extract_with_delims(text_buffer, PAGE_TITLE_START, PAGE_TITLE_END, 0)
+                page_title, _ = extract_with_delims(text_buffer, PAGE_TITLE_START, PAGE_TITLE_END, prev_page_start_index)
+                page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", prev_page_start_index)
+                prev_page_start_index = page_start_index
+
                 if not page_title:
                     # no complete page title
                     break
                     #logging.debug("Error: page information is cut. FIX THIS ISSUE!!!")
-
-                page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", page_start_index)
 
             # find the revision start position
             revision_start_index = text_buffer.find(REVISION_START, cur_index)
@@ -190,7 +192,8 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
             if revision_end_index == -1:
                 break
 
-            yield page_title, page_id, text_buffer[revision_start_index:revision_end_index + len(REVISION_END)]
+            revision_text = text_buffer[revision_start_index:revision_end_index + len(REVISION_END)]
+            yield page_title, page_id, revision_text
 
             cur_index = revision_end_index + len(REVISION_END)
 

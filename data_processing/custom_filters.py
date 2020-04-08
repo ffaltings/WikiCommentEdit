@@ -1,82 +1,94 @@
 """
-Idea: Filters as first-class objects can be stacked at runtime.
+Contains self-contained isolated filters/processors implemented as python generators
 """
 
-class WikiFilter():
-    """WikiFilters are callables supporting any of apply_meta, apply_instance, apply_pre_diff, apply_post_diff"""
+import re
+from profiling import Profiled
 
-    def apply_meta(self, meta):
-        """Applied when meta data is parsed"""
-        return True
+def page_id_filter(accepted_ids):
+    def generate(meta):
+        if meta['page_id'] in accepted_ids:
+            yield meta
+    return generate
 
-    def apply_pre_diff(self, instance):
-        """Applied before tokenization and before diff is computed"""
-        return True
-
-    def apply_post_diff(self, instance):
-        """Applied after tokenization and after diff is computed"""
-        return True
-
-    def apply_instance(self, instance):
-        """Applied to the final instance"""
-        return True
-
-
-class PageIdFilter(WikiFilter):
-    def __init__(self, accepted_ids):
-        self.accepted_ids = accepted_ids
-
-    def apply_meta(self, meta):
-        return meta["page_id"] in self.accepted_ids
-
-class CommentLength(WikiFilter):
-    def __init__(self, min_len, max_len):
-        self.min_len = min_len
-        self.max_len = max_len
-
-    def apply_meta(self, meta):
+def comment_length(min_len, max_len):
+    def generate(meta):
         clen = len(meta["comment_text"])
-        return clen >= self.min_len and clen < self.max_len
+        if clen >= min_len and clen < max_len:
+            yield meta
+    return generate
+
+def comment_token_length(min_len, max_len):
+    def generate(meta):
+        approx_tokens = meta["comment_text"].split(" ")
+        clen = len(approx_tokens)
+        if clen >= min_len and clen < max_len:
+            yield meta
+    return generate
 
 
-class TextLength(WikiFilter):
-    def __init__(self, min_len, max_len):
-        self.min_len = min_len
-        self.max_len = max_len
+def comment_blocklist_filter(exclude_words = ["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]):
+    def generate(meta):
+        comment = meta["comment_text"]
+        if not any(word in comment for word in exclude_words):
+            yield meta
+    return generate
 
-    def apply_pre_diff(self, instance):
-        src_text = instance["src_text"]
-        tgt_text = instance["tgt_text"]
-        len_src = len(src_text)
-        len_tgt = len(tgt_text)
-        return src_text and tgt_text and len_src >= self.min_len and len_tgt >= self.min_len and len_src < self.max_len and len_tgt < self.max_len
+def text_length(min_len, max_len):
+    def generate(instance):
+        len_src = len(instance["src_text"])
+        len_tgt = len(instance["tgt_text"])
+        if len_src >= min_len and len_tgt >= min_len and len_src < max_len and len_tgt < max_len:
+            yield instance
+    return generate
+
+def exclude_page_types(excludes_prefixes = ["Talk:"]):
+    def generate(meta):
+        has_any_prefix = any(prefix in meta["page_title"] for prefix in excludes_prefixes)
+        if not has_any_prefix:
+            yield meta
+    return generate
+
+def has_section_title(instance):
+    if instance['section_title']:
+        yield instance
+
+def is_human_edit(instance):
+    raise NotImplementedError
+
+def has_grounding(look_in_src = True, look_in_tgt = True):
+    def generate(instance):
+        sources = []
+        if look_in_src: sources.append(instance["src_text"])
+        if look_in_tgt: sources.append(instance["tgt_text"])
+        if any("http://" in source for source in sources):
+            source_text = "".join(sources)
+            instance["grounding_urls"] = list(set(re.findall(r"http://[^\s|\]]+", source_text)))
+            yield instance
+
+    return generate
+
+def grounding_domain_whitelist(whitelist=[], file=None):
+    if file:
+        with open(file, "r", encoding="utf-8") as f:
+            whitelist = [x.strip() for x in f.readlines()]
+    whitelist = ["://" + x for x in whitelist]
+
+    @Profiled.generator
+    def grounding_domain_whitelist(instance):
+        instance["grounding_urls"] = [url for url in instance["grounding_urls"] if any(domain in url for domain in whitelist)]
+        if len(instance["grounding_urls"]) > 0:
+            yield instance
+
+    return grounding_domain_whitelist
 
 
-class HasSectionTitle(WikiFilter):
-    def apply_meta(self, meta):
-        return bool(meta["section_title"])
-
-class IsHumanEdit(WikiFilter):
-    def apply_instance(self, instance):
-        return True
-
-class HasGrounding(WikiFilter):
-    def apply_instance(self, instance):
-        if "http://" in instance["src_text"]:
-            return True
-        else:
-            return False
-
-class ExtractLeftRightContext(WikiFilter):
-    def __init__(self, left_window_size, right_window_size):
-        self.left_window_size = left_window_size
-        self.right_window_size = right_window_size
-
-    def apply_post_diff(self, instance):
+def extract_left_right_context(left_window_size, right_window_size):
+    def generate(instance):
         if len(instance["src_action"]) < 1:
-            return False
-        start_token_idx = instance["src_action"][0]
-        end_token_idx = instance["src_action"][-1]
+            return
+        #start_token_idx = instance["src_action"][0]
+        #end_token_idx = instance["src_action"][-1]
+        yield instance
 
-        return True
-
+    return generate

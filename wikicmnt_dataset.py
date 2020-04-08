@@ -12,7 +12,7 @@ from nltk.stem import WordNetLemmatizer
 from torch.autograd import Variable
 from tqdm import tqdm
 
-from wiki_util import tokenizeText
+from data_processing.wiki_util import tokenizeText
 
 
 class Wiki_DataSet:
