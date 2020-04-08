@@ -20,7 +20,6 @@ from generator_chaining import chain_generators
 from custom_filters import *
 from custom_extractors import *
 from generic_extractor import *
-#from wikiatomic_extractor_st import *
 
 def download_on_demand(url, dump_file, temp_path, compress_type):
     # Hack for HPC: cert verification issues
@@ -84,6 +83,7 @@ if __name__ == "__main__":
             has_grounding(look_in_src=True, look_in_tgt=True),
             grounding_domain_whitelist(file=scriptdir("domains-official.txt")),
             clean_markup_mediawikiparser,
+            clean_markup_custom,
             tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
             create_diffs(ctx_window_size=5),
         ]

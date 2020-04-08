@@ -7,11 +7,11 @@ import json
 import os
 import io
 import itertools
+import mwparserfromhell
 from copy import deepcopy
 from nltk.tokenize import word_tokenize, sent_tokenize
 
 from wiki_util import *
-from wiki_dump_download import existFile
 from profiling import Profiled
 
 def generate_revision_pairs(wiki_stream):
@@ -87,6 +87,11 @@ def clean_markup_mediawikiparser(instance):
     instance['tgt_text'] = str(mwparserfromhell.parse(instance['tgt_text']).strip_code())
     yield instance
 
+@Profiled.generator
+def clean_markup_custom(instance):
+    instance['src_text'] = cleanWikiText(instance['src_text'])
+    instance['tgt_text'] = cleanWikiText(instance['tgt_text'])
+    yield instance
 
 def tokenize(mode):
     def nltk_version(text):
@@ -154,5 +159,3 @@ def generate_sentence_level(instance):
 
         extracted_sentences += 1
         yield sent_instance
-
-
