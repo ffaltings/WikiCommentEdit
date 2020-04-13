@@ -11,20 +11,20 @@ import collections
 import numpy as np
 import mwparserfromhell
 
-import spacy
+## Re-enable when using spacy!
+#import spacy
+#nlp = spacy.load('en_core_web_sm') # was: 'en'
+
 from tqdm import tqdm
+import nltk
+nltk.data.path.append('./nltk_data/')
 from nltk.translate.bleu_score import sentence_bleu
 from nltk import word_tokenize
-
 
 from azure.storage.blob import BlobServiceClient, BlobClient
 
 RevisionMETA = collections.namedtuple("RevisionMETA", ['comment_text',
     'rev_id', 'parent_id', 'text_length', 'section_title', 'page_title'])
-
-
-# initialize the spacy
-nlp = spacy.load('en_core_web_sm') # was: 'en'
 
 '''
 Extract the contents by delimitors

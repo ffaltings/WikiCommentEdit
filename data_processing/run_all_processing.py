@@ -75,7 +75,7 @@ if __name__ == "__main__":
         processors = [ # chose processing and filtering steps here
             has_section_title,
             comment_length(20, 200),
-            exclude_page_types(["Talk:"]),
+            exclude_page_types(["Talk:", "User talk:"]),
             comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
             comment_token_length(2, 1000),
             text_length(5, 10000000),
@@ -85,7 +85,10 @@ if __name__ == "__main__":
             clean_markup_mediawikiparser,
             clean_markup_custom,
             tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
-            create_diffs(ctx_window_size=5),
+            compute_diff,
+            filter_additions(min_length=5, max_length=200),
+            #split_into_continous_edits,
+            extract_context_around_diff(ctx_window_size=5),
         ]
     )
     
