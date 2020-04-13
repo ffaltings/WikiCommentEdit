@@ -171,25 +171,25 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
         while True:
 
             if next_page_start is None:
+                # we did not yet find where the next page starts, keep looking for it..
                 page_start_index = text_buffer.find(PAGE_START, cur_index)
                 found_new_page_start_in_buffer = page_start_index != -1
                 if found_new_page_start_in_buffer:
+                    # we found the start of the next page, store it so that we notice once a revision passes over it
                     next_page_title, _ = extract_with_delims(text_buffer, PAGE_TITLE_START, PAGE_TITLE_END, page_start_index)
                     next_page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", page_start_index)
                     next_page_title_id = (next_page_title, next_page_id)
                     next_page_start = page_start_index
-                    #print("Setting next page {} to start at {}, still at {}".format(next_page_title_id, next_page_start, cur_index))
 
             # find the revision start position
             revision_start_index = text_buffer.find(REVISION_START, cur_index)
 
             passed_page = next_page_start is not None and revision_start_index > next_page_start
             if passed_page:
-                #print("Passed over to the next page at {}, moving from old page {} to {}".format(revision_start_index, page_title, next_page_title_id))
+                # the current revision passed over the next pagebreak. update the current page_title, page_id and start looking for the next new page!
                 page_title, page_id = next_page_title_id
                 next_page_title_id = None
                 next_page_start = None
-
 
             # No revision in the buffer, continue loading data
             if revision_start_index == -1:
