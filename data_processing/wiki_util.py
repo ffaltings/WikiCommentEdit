@@ -128,7 +128,7 @@ def split_pages(wiki_file, chunk_size=1024):
 '''
 Extract the revision text buffer, which has the format "<revision> ... </revision>".
 '''
-def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
+def split_records(wiki_file, azure=False, chunk_size=150 * 1024, max_bytes=None):
     
     text_buffer = ""    
     cur_index = 0
@@ -145,9 +145,11 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
     next_page_start = None
     next_page_title_id = None
 
+    total_bytes_read = 0
     while True:
         if not azure:
             chunk = wiki_file.read(chunk_size)
+            total_bytes_read += chunk_size
         else:
             if cur_offset < blob_size:
                 bytes_data = wiki_file.download_blob(offset=cur_offset,
@@ -155,6 +157,7 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
                 cur_offset += len(bytes_data)
                 chunk = decompressor.decompress(bytes_data)
                 chunk = decoder.decode(input=chunk)
+                total_bytes_read += chunk_size
             else:
                 chunk = ''
                 
@@ -212,6 +215,10 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
             yield page_title, page_id, revision_text
 
             cur_index = revision_end_index + len(REVISION_END)
+
+        if max_bytes is not None and total_bytes_read > max_bytes:
+            print("\nStop processing input stream as max_bytes={} was requested and already read a total of {} bytes\n".format(max_bytes, total_bytes_read))
+            break
 
         # No more datA
         if chunk == "":

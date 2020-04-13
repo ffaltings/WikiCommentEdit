@@ -10,6 +10,7 @@ import io
 import bz2
 import re
 
+from functools import partial
 from tqdm import tqdm
 from azure_utils import open_azure_input_stream, upload_to_azure_output_stream
 from wiki_dump_download import existFile, get_dump_task
@@ -38,8 +39,10 @@ def process(input_stream, output_stream, extractor, base_generator, processors):
     """Applies the base_generator on input_stream, then chains processor steps in processors, finally uses extractor to write to output_stream"""
     iterable = tqdm(base_generator(input_stream), "baseline generator", mininterval=3.0)
     results = chain_generators(iterable, processors)
+
     for instance in tqdm(results, "final results", mininterval=3.0):
         extractor.write_instance(output_stream, instance)
+        Profiled.total_count += 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
@@ -50,6 +53,8 @@ if __name__ == "__main__":
     parser.add_argument('--temp-path', type=str, default="./data/raw/", help='the temp / data directory, used to download wiki dump files')
     parser.add_argument('--output-path', type=str, default="./data/out/", help='the output directory')
     parser.add_argument('--compress-type', type=str, default='bz2', help='the compressed file type to download: 7z or bz2 [default: bz2]')
+    parser.add_argument('--max_mb', type=int, default=None, help='if given, only processes the first max_mb MByte from the file and then stops')
+
     parser.add_argument('--azure', action='store_true')
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)s) %(message)s')
@@ -67,30 +72,34 @@ if __name__ == "__main__":
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
     json_output_stream = io.StringIO() if args.azure else open(output_file, "w", buffering=1, encoding='utf-8')
 
+    max_bytes = args.max_mb and 1024*1024* args.max_mb
+
+    processors = [ # chose processing and filtering steps here
+        has_section_title,
+        comment_length(20, 200),
+        exclude_page_types(["Talk:", "User talk:"]),
+        comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
+        comment_token_length(2, 1000),
+        text_length(5, 10000000),
+        generate_section_pairs,
+        has_grounding(look_in_src=True, look_in_tgt=True),
+        grounding_domain_whitelist(file=scriptdir("domains-official.txt")),
+        clean_markup_mediawikiparser,
+        clean_markup_custom,
+        tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
+        compute_diff,
+        find_continous_edits,
+        filter_single_edit_span, # alternative step: split_into_continuous_edits,
+        filter_additions(min_length=3, max_length=20),
+        extract_context_around_diff(ctx_window_size=5)
+        ]
+    
     process(
         wiki_input_stream,
         json_output_stream,
         extractor = NDJsonExtractor(), # chose extractor here
-        base_generator = generate_revision_pairs, # chose base generator here
-        processors = [ # chose processing and filtering steps here
-            has_section_title,
-            comment_length(20, 200),
-            exclude_page_types(["Talk:", "User talk:"]),
-            comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
-            comment_token_length(2, 1000),
-            text_length(5, 10000000),
-            generate_section_pairs,
-            has_grounding(look_in_src=True, look_in_tgt=True),
-            grounding_domain_whitelist(file=scriptdir("domains-official.txt")),
-            clean_markup_mediawikiparser,
-            clean_markup_custom,
-            tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
-            compute_diff,
-            find_continous_edits,
-            filter_single_edit_span, # alternative step: split_into_continuous_edits,
-            filter_additions(min_length=3, max_length=20),
-            extract_context_around_diff(ctx_window_size=5),
-        ]
+        base_generator = partial(generate_revision_pairs, max_bytes=max_bytes), # chose base generator here
+        processors=processors
     )
     
     wiki_input_stream.close()
@@ -99,4 +108,4 @@ if __name__ == "__main__":
     else:
         upload_to_azure_output_stream()
     logging.info("Done with task %d" % args.index)
-    logging.info(json.dumps(Profiled.perf_stats))
+    logging.info(Profiled.summarize(processors))

@@ -14,7 +14,7 @@ from nltk.tokenize import word_tokenize, sent_tokenize
 from wiki_util import *
 from profiling import Profiled
 
-def generate_revision_pairs(wiki_stream):
+def generate_revision_pairs(wiki_stream, max_bytes=None):
     logger=logging.getLogger(__name__)
     start_time = datetime.datetime.now()
 
@@ -23,7 +23,7 @@ def generate_revision_pairs(wiki_stream):
     prev_text = None
     prev_page_title = ''
 
-    records = split_records(wiki_stream)
+    records = split_records(wiki_stream, max_bytes=max_bytes)
 
     for page_title, page_id, revision in records:
         revision_count += 1
@@ -148,6 +148,7 @@ def find_continous_edits(instance):
     instance['src_token_diffs'] = list(group_by_continuous(instance['src_token_diff']))
     yield instance
 
+@Profiled.generator
 def filter_single_edit_span(instance):
     """Filters down to edits that only have a single continuous edit token span"""
     if len(instance['tgt_token_diffs']) == 1:
@@ -155,6 +156,7 @@ def filter_single_edit_span(instance):
         del instance['src_token_diffs']
         yield instance
 
+@Profiled.generator
 def split_into_continuous_edits(instance):
     """Forks an instance containining multiple edit locations within one edit into a seperate instance for each edit span"""
     edits = instance['tgt_token_diffs']
@@ -169,8 +171,11 @@ def split_into_continuous_edits(instance):
         sub_instance['tgt_token_diff'] = edit_span
         yield sub_instance
 
+
 def filter_additions(min_length, max_length):
     """Filters down to items where text has been ADDED, given a minimum and maximum token length"""
+
+    @Profiled.generator
     def filter_additions(instance):
         len_tgt_diff = len(instance['tgt_token_diff'])
         if len_tgt_diff >= min_length and len_tgt_diff < max_length:
