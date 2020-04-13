@@ -141,7 +141,9 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
 
     page_title = ""
     page_id = ""
-    prev_page_start_index = None
+    
+    next_page_start = None
+    next_page_title_id = None
 
     while True:
         if not azure:
@@ -167,30 +169,27 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
         PAGE_TITLE_END = "</title>"
         
         while True:
-            ## The original code determining the page title was broken. This is tricky:
-            ## When a new page title is found, we have to set page_title / page_id to the one *previously* found
-            ## i.e. page_start_index points one page ahead of the currently processed revisions!
-            passed_page = prev_page_start_index is not None and cur_index > prev_page_start_index
-            if passed_page:
-                page_title, _ = extract_with_delims(text_buffer, PAGE_TITLE_START, PAGE_TITLE_END, prev_page_start_index)
-                page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", prev_page_start_index)
-                print("Passed prev_start_index {} at {}, setting title to {} from {}. resetting..".format(prev_page_start_index, cur_index, page_title, prev_page_start_index))
-                prev_page_start_index = None
 
-                if not page_title:
-                    # no complete page title
-                    # logging.debug("Error: page information is cut. FIX THIS ISSUE!!!")
-                    break
-
-            page_start_index = text_buffer.find(PAGE_START, cur_index)
-            found_new_page_start_in_buffer = page_start_index != -1
-            if (found_new_page_start_in_buffer and page_start_index != prev_page_start_index):
-                # update the current page title/ID
-                print("At {}, updating prev_page_start_index to {}".format(cur_index, page_start_index))
-                prev_page_start_index = page_start_index
+            if next_page_start is None:
+                page_start_index = text_buffer.find(PAGE_START, cur_index)
+                found_new_page_start_in_buffer = page_start_index != -1
+                if found_new_page_start_in_buffer:
+                    next_page_title, _ = extract_with_delims(text_buffer, PAGE_TITLE_START, PAGE_TITLE_END, page_start_index)
+                    next_page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", page_start_index)
+                    next_page_title_id = (next_page_title, next_page_id)
+                    next_page_start = page_start_index
+                    #print("Setting next page {} to start at {}, still at {}".format(next_page_title_id, next_page_start, cur_index))
 
             # find the revision start position
             revision_start_index = text_buffer.find(REVISION_START, cur_index)
+
+            passed_page = next_page_start is not None and revision_start_index > next_page_start
+            if passed_page:
+                #print("Passed over to the next page at {}, moving from old page {} to {}".format(revision_start_index, page_title, next_page_title_id))
+                page_title, page_id = next_page_title_id
+                next_page_title_id = None
+                next_page_start = None
+
 
             # No revision in the buffer, continue loading data
             if revision_start_index == -1:
@@ -202,6 +201,12 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
             # No complete page in buffer
             if revision_end_index == -1:
                 break
+
+            if next_page_start is not None and revision_end_index > next_page_start:
+                print("Error, the revision ends at {} but next page was scheduled to start at {}. This should never happen!".format(revision_end_index, next_page_start))
+
+            if not page_title:
+                print("Error, missing page title. This should never happen!")
 
             revision_text = text_buffer[revision_start_index:revision_end_index + len(REVISION_END)]
             yield page_title, page_id, revision_text
