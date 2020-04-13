@@ -86,8 +86,9 @@ if __name__ == "__main__":
             clean_markup_custom,
             tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
             compute_diff,
-            filter_additions(min_length=5, max_length=200),
-            #split_into_continous_edits,
+            find_continous_edits,
+            filter_single_edit_span, # alternative step: split_into_continuous_edits,
+            filter_additions(min_length=3, max_length=20),
             extract_context_around_diff(ctx_window_size=5),
         ]
     )
