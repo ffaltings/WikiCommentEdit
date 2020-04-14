@@ -228,6 +228,11 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024, max_bytes=None)
             text_buffer = ""
         else:
             text_buffer = text_buffer[cur_index:]
+            if next_page_start is not None:
+                next_page_start -= cur_index
+                if next_page_start < 0:
+                    next_page_start = None
+                    print("Error, the text buffer was clipped in a way that the page title was cut. This should never happen!")
 
 def split_into_sections(text):
     section_title_pattern = '(^=+\s*.+\s*=+$)'
