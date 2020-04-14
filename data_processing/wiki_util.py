@@ -26,7 +26,7 @@ RevisionMETA = collections.namedtuple("RevisionMETA", ['comment_text',
 
 
 # initialize the spacy
-nlp = spacy.load('en_core_web_sm') # was: 'en'
+#nlp = spacy.load('en_core_web_sm') # was: 'en'
 
 '''
 Extract the contents by delimitors
@@ -360,6 +360,9 @@ def retrieveReferences(text):
         #deref_text += " (ref {}) ".format(ref_counter)
         ref_counter += 1
         ref_list.append(text[span[0]:span[1]])
+
+    # if no references found, return original text
+    if not ref_list: deref_text = text
 
     return deref_text, ref_list
 
