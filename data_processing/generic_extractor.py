@@ -8,6 +8,8 @@ import os
 import io
 import itertools
 import mwparserfromhell
+from itertools import accumulate
+from operator import add
 from copy import deepcopy
 from nltk.tokenize import word_tokenize, sent_tokenize
 
@@ -110,8 +112,6 @@ def tokenize(mode):
     
     return tokenize
 
-
-
 @Profiled.generator
 def compute_diff(instance):
     """Given src_tokens and tgt_tokens, computes a token-level diff"""
@@ -196,6 +196,58 @@ def extract_context_around_diff(ctx_window_size):
 
         yield instance
     return extract_context
+
+
+
+def extract_sentence_context_around_target(left_sentences=1, right_sentences=1):
+    """Creates a context window around the TARGET tokens, based on sentence tokenization"""
+
+    def flatten1(lol):
+        return [x for inner in lol for x in inner]
+
+    def compute_token_offsets(sentences):
+        lengths = [len(s) for s in sentences]
+        offsets = [0] + list(accumulate(lengths))
+        return offsets
+
+    def find_sentence_indices(token_offsets, indices):
+        def find_index(idx):
+            for i, offset in enumerate(token_offsets):
+                if offset > idx: return i-1
+            return -1
+        return [find_index(i) for i in indices]
+    
+    @Profiled.generator
+    def extract_sentence_context_around_target(instance):
+        token_diff = instance['tgt_token_diff']
+        if not len(token_diff): return
+        
+        # find sentence index based on token diff indices
+        min_token, max_token = token_diff[0], token_diff[-1]
+        token_offsets = compute_token_offsets(instance['tgt_sents'])
+        sent_indices = find_sentence_indices(token_offsets, [min_token, max_token])
+        min_sentence, max_sentence = min(sent_indices), max(sent_indices)
+        
+        # extract left/right context sentence
+        instance["left_context"] = instance['tgt_sents'][min_sentence-left_sentences:min_sentence]
+        instance["right_context"] = instance['tgt_sents'][max_sentence+1:max_sentence+1+right_sentences]
+
+        # prune target to only contain relevant sentences
+        start_token = token_offsets[min_sentence]
+        end_token = token_offsets[max_sentence+1]
+        instance["tgt_tokens"] = instance["tgt_tokens"][start_token:end_token]
+        instance["tgt_sents"] = instance['tgt_sents'][min_sentence:max_sentence+1]
+        
+        # hacky reconstruction of tgt_text
+        instance["tgt_text"] = " ".join(instance["tgt_tokens"])
+        instance["left_text"] = " ".join(flatten1(instance["left_context"]))
+        instance["right_text"] = " ".join(flatten1(instance["right_context"]))
+
+        # get rid of all src_ keys
+        for key in [key for key in instance if key.startswith("src_")]: del instance[key]
+        yield instance
+
+    return extract_context_by_sentences
 
 def project_to_fields(accepted_fields):
     """Creates a projection of the instance to a pre-supplied set of fields"""
