@@ -382,6 +382,9 @@ def retrieveReferences(text):
         ref_counter += 1
         ref_list.append(text[span[0]:span[1]])
 
+    # if no references found, return original text
+    if not ref_list: deref_text = text
+
     return deref_text, ref_list
 
 def tokenizeText(text):

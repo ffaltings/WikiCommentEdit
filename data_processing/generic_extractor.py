@@ -20,7 +20,7 @@ def generate_revision_pairs(wiki_stream, max_bytes=None):
 
     revision_count = 0
     page_count = 0
-    prev_text = None
+    prev_text = '' # changed from None!
     prev_page_title = ''
 
     records = split_records(wiki_stream, max_bytes=max_bytes)
@@ -31,8 +31,8 @@ def generate_revision_pairs(wiki_stream, max_bytes=None):
         # fields 
         rev_id, parent_id, timestamp, username, userid, userip, comment, text = extract_data(revision)
         comment = cleanCmntText(comment)
-        sect_title, comment = extractSectionTitle(comment)
-
+#        sect_title, comment = extractSectionTitle(comment)
+        sect_title = ''
         if prev_page_title != page_title:
             page_count += 1
             prev_page_title = page_title

@@ -15,7 +15,6 @@ def chain_generators(iterable, list_of_generators):
         result = flatten1(apply(gen, result))
     return result
 
-
 if __name__ == "__main__":
     """This is a demo of how generators are chained"""
 
