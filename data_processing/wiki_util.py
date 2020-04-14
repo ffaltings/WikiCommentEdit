@@ -7,6 +7,7 @@ import bz2
 import io
 import codecs
 import collections
+import logging
 
 import numpy as np
 import mwparserfromhell
@@ -206,10 +207,10 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024, max_bytes=None)
                 break
 
             if next_page_start is not None and revision_end_index > next_page_start:
-                print("Error, the revision ends at {} but next page was scheduled to start at {}. This should never happen!".format(revision_end_index, next_page_start))
+                logging.error("Error: the revision ends at {} but next page was scheduled to start at {}. This should never happen!".format(revision_end_index, next_page_start))
 
             if not page_title:
-                print("Error, missing page title. This should never happen!")
+                logging.error("Error: missing page title. This should never happen!")
 
             revision_text = text_buffer[revision_start_index:revision_end_index + len(REVISION_END)]
             yield page_title, page_id, revision_text
@@ -217,7 +218,7 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024, max_bytes=None)
             cur_index = revision_end_index + len(REVISION_END)
 
         if max_bytes is not None and total_bytes_read > max_bytes:
-            print("\nStop processing input stream as max_bytes={} was requested and already read a total of {} bytes\n".format(max_bytes, total_bytes_read))
+            logging.info("\nStop processing input stream as max_bytes={} was requested and already read a total of {} bytes\n".format(max_bytes, total_bytes_read))
             break
 
         # No more datA
@@ -232,7 +233,7 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024, max_bytes=None)
                 next_page_start -= cur_index
                 if next_page_start < 0:
                     next_page_start = None
-                    print("Error, the text buffer was clipped in a way that the page title was cut. This should never happen!")
+                    logging.error("Error: the text buffer was clipped in a way that the page title was cut. This should never happen!")
 
 def split_into_sections(text):
     section_title_pattern = '(^=+\s*.+\s*=+$)'
