@@ -85,6 +85,7 @@ if __name__ == "__main__":
         generate_section_pairs,
         has_grounding(look_in_src=True, look_in_tgt=True),
         grounding_domain_whitelist(file=scriptdir("domains-official.txt")),
+        remove_all_urls(replacement='URL'),
         clean_markup_mediawikiparser,
         clean_markup_custom,
         tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
