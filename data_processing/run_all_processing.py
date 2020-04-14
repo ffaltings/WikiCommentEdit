@@ -92,7 +92,13 @@ if __name__ == "__main__":
         find_continous_edits,
         filter_single_edit_span, # alternative step: split_into_continuous_edits,
         filter_additions(min_length=3, max_length=20),
-        extract_context_around_diff(ctx_window_size=5)
+        extract_context_around_diff(ctx_window_size=5),
+        project_to_fields([
+            'rev_id', 'page_id', 'parent_id', 'timestamp',
+            'src_text', 'tgt_text', 'comment_text',
+            'section_title', 'page_title',
+            'src_tokens', 'tgt_tokens', 'src_action', 'tgt_action', 
+            'grounding_urls'])
         ]
     
     process(

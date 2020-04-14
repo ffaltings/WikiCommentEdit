@@ -141,6 +141,7 @@ def group_by_continuous(num_iterable):
             buffer = [i]
     if buffer: yield buffer
 
+@Profiled.generator
 def find_continous_edits(instance):
     """Helper processing step that identifies continuous edits"""
     instance['tgt_token_diffs'] = list(group_by_continuous(instance['tgt_token_diff']))
@@ -191,6 +192,19 @@ def extract_context_around_diff(ctx_window_size):
 
         instance.update({"src_tokens": src_ctx_tokens, "src_action": src_action,
                         "tgt_tokens": tgt_ctx_tokens, "tgt_action": tgt_action})
+
         yield instance
     return extract_context
+
+def project_to_fields(accepted_fields):
+    """Creates a projection of the instance to a pre-supplied set of fields"""
+    accepted_fields = set(accepted_fields)
+
+    @Profiled.generator
+    def project_to_fields(instance):
+        for key in list(instance):
+            if not key in accepted_fields:
+                del instance[key]
+        yield instance
+    return project_to_fields
 
