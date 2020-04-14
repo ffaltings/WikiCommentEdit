@@ -11,22 +11,20 @@ import collections
 import numpy as np
 import mwparserfromhell
 
+## Re-enable when using spacy!
 #import spacy
+#nlp = spacy.load('en_core_web_sm') # was: 'en'
+
 from tqdm import tqdm
 import nltk
 nltk.data.path.append('./nltk_data/')
 from nltk.translate.bleu_score import sentence_bleu
 from nltk import word_tokenize
 
-
 from azure.storage.blob import BlobServiceClient, BlobClient
 
 RevisionMETA = collections.namedtuple("RevisionMETA", ['comment_text',
     'rev_id', 'parent_id', 'text_length', 'section_title', 'page_title'])
-
-
-# initialize the spacy
-#nlp = spacy.load('en_core_web_sm') # was: 'en'
 
 '''
 Extract the contents by delimitors
@@ -130,7 +128,7 @@ def split_pages(wiki_file, chunk_size=1024):
 '''
 Extract the revision text buffer, which has the format "<revision> ... </revision>".
 '''
-def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
+def split_records(wiki_file, azure=False, chunk_size=150 * 1024, max_bytes=None):
     
     text_buffer = ""    
     cur_index = 0
@@ -143,10 +141,15 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
 
     page_title = ""
     page_id = ""
+    
+    next_page_start = None
+    next_page_title_id = None
 
+    total_bytes_read = 0
     while True:
         if not azure:
             chunk = wiki_file.read(chunk_size)
+            total_bytes_read += chunk_size
         else:
             if cur_offset < blob_size:
                 bytes_data = wiki_file.download_blob(offset=cur_offset,
@@ -154,6 +157,7 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
                 cur_offset += len(bytes_data)
                 chunk = decompressor.decompress(bytes_data)
                 chunk = decoder.decode(input=chunk)
+                total_bytes_read += chunk_size
             else:
                 chunk = ''
                 
@@ -166,22 +170,29 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
         PAGE_START = "<page>"
         PAGE_TITLE_START = "<title>"
         PAGE_TITLE_END = "</title>"
-        prev_page_start_index = 0
+        
         while True:
-            page_start_index = text_buffer.find(PAGE_START, cur_index)
-            if page_start_index != -1 and page_start_index != prev_page_start_index:
-                # update the current page title/ID
-                page_title, _ = extract_with_delims(text_buffer, PAGE_TITLE_START, PAGE_TITLE_END, prev_page_start_index)
-                page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", prev_page_start_index)
-                prev_page_start_index = page_start_index
 
-                if not page_title:
-                    # no complete page title
-                    break
-                    #logging.debug("Error: page information is cut. FIX THIS ISSUE!!!")
+            if next_page_start is None:
+                # we did not yet find where the next page starts, keep looking for it..
+                page_start_index = text_buffer.find(PAGE_START, cur_index)
+                found_new_page_start_in_buffer = page_start_index != -1
+                if found_new_page_start_in_buffer:
+                    # we found the start of the next page, store it so that we notice once a revision passes over it
+                    next_page_title, _ = extract_with_delims(text_buffer, PAGE_TITLE_START, PAGE_TITLE_END, page_start_index)
+                    next_page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", page_start_index)
+                    next_page_title_id = (next_page_title, next_page_id)
+                    next_page_start = page_start_index
 
             # find the revision start position
             revision_start_index = text_buffer.find(REVISION_START, cur_index)
+
+            passed_page = next_page_start is not None and revision_start_index > next_page_start
+            if passed_page:
+                # the current revision passed over the next pagebreak. update the current page_title, page_id and start looking for the next new page!
+                page_title, page_id = next_page_title_id
+                next_page_title_id = None
+                next_page_start = None
 
             # No revision in the buffer, continue loading data
             if revision_start_index == -1:
@@ -194,10 +205,20 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024):
             if revision_end_index == -1:
                 break
 
+            if next_page_start is not None and revision_end_index > next_page_start:
+                print("Error, the revision ends at {} but next page was scheduled to start at {}. This should never happen!".format(revision_end_index, next_page_start))
+
+            if not page_title:
+                print("Error, missing page title. This should never happen!")
+
             revision_text = text_buffer[revision_start_index:revision_end_index + len(REVISION_END)]
             yield page_title, page_id, revision_text
 
             cur_index = revision_end_index + len(REVISION_END)
+
+        if max_bytes is not None and total_bytes_read > max_bytes:
+            print("\nStop processing input stream as max_bytes={} was requested and already read a total of {} bytes\n".format(max_bytes, total_bytes_read))
+            break
 
         # No more datA
         if chunk == "":

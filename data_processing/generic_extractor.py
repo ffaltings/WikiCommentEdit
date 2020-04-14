@@ -14,7 +14,7 @@ from nltk.tokenize import word_tokenize, sent_tokenize
 from wiki_util import *
 from profiling import Profiled
 
-def generate_revision_pairs(wiki_stream):
+def generate_revision_pairs(wiki_stream, max_bytes=None):
     logger=logging.getLogger(__name__)
     start_time = datetime.datetime.now()
 
@@ -23,7 +23,7 @@ def generate_revision_pairs(wiki_stream):
     prev_text = '' # changed from None!
     prev_page_title = ''
 
-    records = split_records(wiki_stream)
+    records = split_records(wiki_stream, max_bytes=max_bytes)
 
     for page_title, page_id, revision in records:
         revision_count += 1
@@ -115,6 +115,8 @@ def tokenize(mode):
 
 @Profiled.generator
 def compute_diff(instance):
+    """Given src_tokens and tgt_tokens, computes a token-level diff"""
+
     # extract the offset of the changed tokens in both src and tgt
     src_token_diff, tgt_token_diff = diffRevision(instance['src_tokens'], instance['tgt_tokens'])
     instance['tgt_token_diff'] = tgt_token_diff
@@ -129,7 +131,6 @@ def compute_diff(instance):
 
     yield instance
 
-
 def group_by_continuous(num_iterable):
     """Creates a nested iterable based on an iterable of numbers, where each sub-list is continuous"""
     buffer = []
@@ -142,15 +143,42 @@ def group_by_continuous(num_iterable):
     if buffer: yield buffer
 
 def find_continous_edits(instance):
+    """Helper processing step that identifies continuous edits"""
     instance['tgt_token_diffs'] = list(group_by_continuous(instance['tgt_token_diff']))
-    instance['src_token_diffs'] = list(group_by_continuous(instance['src_token_diffs']))
+    instance['src_token_diffs'] = list(group_by_continuous(instance['src_token_diff']))
     yield instance
 
+@Profiled.generator
+def filter_single_edit_span(instance):
+    """Filters down to edits that only have a single continuous edit token span"""
+    if len(instance['tgt_token_diffs']) == 1:
+        del instance['tgt_token_diffs']
+        del instance['src_token_diffs']
+        yield instance
+
+@Profiled.generator
+def split_into_continuous_edits(instance):
+    """Forks an instance containining multiple edit locations within one edit into a seperate instance for each edit span"""
+    edits = instance['tgt_token_diffs']
+    if not edits: return
+    print("will split into {} subinstance".format(len(edits)))
+    del instance['tgt_token_diffs']
+    del instance['src_token_diffs']
+    del instance['tgt_token_diff']
+    instance['src_token_diff'] = []
+    for edit_span in edits:
+        sub_instance = deepcopy(instance)
+        sub_instance['tgt_token_diff'] = edit_span
+        yield sub_instance
+
+
 def filter_additions(min_length, max_length):
+    """Filters down to items where text has been ADDED, given a minimum and maximum token length"""
+
+    @Profiled.generator
     def filter_additions(instance):
         len_tgt_diff = len(instance['tgt_token_diff'])
-        len_src_diff = len(instance['src_token_diff'])
-        if len_tgt_diff >= min_length and len_tgt_diff < max_length and len_src_diff == 0:
+        if len_tgt_diff >= min_length and len_tgt_diff < max_length:
             yield instance
     return filter_additions
 
@@ -167,25 +195,3 @@ def extract_context_around_diff(ctx_window_size):
         yield instance
     return extract_context
 
-def generate_sentence_level(instance):
-    tgt_sents = instance['tgt_sents']
-    tgt_tokens = instance['tgt_tokens']
-    #src_tokens = instance['src_tokens']
-    tgt_token_diff = instance['tgt_token_diff']
-    #del instance['tgt_tokens']
-    #del instance['src_tokens']
-    del instance['tgt_sents']
-    del instance['src_sents']
-    del instance['tgt_token_diff']
-    tgt_sent_diff = findSentDiff(tgt_sents, tgt_tokens, tgt_token_diff)
-
-    extracted_sentences = 0
-    for i in tgt_sent_diff:
-        # for each sentence instance, create a deep copy, so that filters/processors can mutate them
-        sent_instance = deepcopy(instance)
-        sent_instance['tgt_sentence'] = tgt_sents[i]
-        sent_instance['left_sentence'] = tgt_sents[i-1] if i-1 >= 0 else None
-        sent_instance['right_sentence'] = tgt_sents[i+1] if i+1 < len(tgt_sents) else None
-
-        extracted_sentences += 1
-        yield sent_instance
