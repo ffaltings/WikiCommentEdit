@@ -68,6 +68,7 @@ if __name__ == "__main__":
     output_file = os.path.join(args.output_path, "{}.json".format(args.index))
     logging.info("Dumped to " + dump_file + " processing to " + output_file)
     if article_count: logging.info("Estimating count of {} articles".format(article_count))
+    if args.max_mb: logging.info("Restricting to the first {} MByte of the raw XML".format(args.max_mb))
 
     wiki_input_stream = open_azure_input_stream() if args.azure else bz2.open(dump_file, "rt", encoding='utf-8')
     json_output_stream = io.StringIO() if args.azure else open(output_file, "w", buffering=1, encoding='utf-8')
