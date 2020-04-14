@@ -182,8 +182,11 @@ def split_records(wiki_file, azure=False, chunk_size=150 * 1024, max_bytes=None)
                     # we found the start of the next page, store it so that we notice once a revision passes over it
                     next_page_title, _ = extract_with_delims(text_buffer, PAGE_TITLE_START, PAGE_TITLE_END, page_start_index)
                     next_page_id, _ = extract_with_delims(text_buffer, "<id>", "</id>", page_start_index)
-                    next_page_title_id = (next_page_title, next_page_id)
-                    next_page_start = page_start_index
+                    
+                    # there is a chance that the page title and id are not yet in this buffer/chunk. only set of we could parse them correctly
+                    if next_page_title and next_page_id:
+                        next_page_title_id = (next_page_title, next_page_id)
+                        next_page_start = page_start_index
 
             # find the revision start position
             revision_start_index = text_buffer.find(REVISION_START, cur_index)
