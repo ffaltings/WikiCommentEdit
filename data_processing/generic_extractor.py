@@ -178,7 +178,8 @@ def filter_additions(min_length, max_length):
     @Profiled.generator
     def filter_additions(instance):
         len_tgt_diff = len(instance['tgt_token_diff'])
-        if len_tgt_diff >= min_length and len_tgt_diff < max_length:
+        len_src_diff = len(instance['src_token_diff'])
+        if len_src_diff == 0 and len_tgt_diff >= min_length and len_tgt_diff < max_length: 
             yield instance
     return filter_additions
 
