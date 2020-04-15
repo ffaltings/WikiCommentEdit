@@ -2,13 +2,9 @@
 Downloads (on-demand) a range of dump files and processes them according to filters and processors specified below.
 """
 
+import os, io, argparse
 import logging
-import argparse
 import urllib
-import os
-import io
-import bz2
-import re
 
 from functools import partial
 from tqdm import tqdm
@@ -75,30 +71,33 @@ if __name__ == "__main__":
 
     max_bytes = args.max_mb and 1024*1024* args.max_mb
 
-    processors = [ # chose processing and filtering steps here
+    ### chose processing and filtering steps here:
+    processors = [
         has_section_title,
         comment_length(20, 200),
         exclude_page_types(["Talk:", "User talk:"]),
         comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
         comment_token_length(2, 1000),
         text_length(5, 10000000),
-        generate_section_pairs,
+        restrict_to_section,
         has_grounding(look_in_src=True, look_in_tgt=True),
-        grounding_domain_whitelist(file=scriptdir("domains-official.txt")),
+        #grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
         remove_all_urls(replacement='URL'),
         clean_markup_mediawikiparser,
         clean_markup_custom,
-        tokenize(mode='nltk'), # mode can be 'spacy' or 'nltk'
+        tokenize(mode='nltk'), ## NOTE: mode can be 'spacy' or 'nltk'
         compute_diff,
         find_continous_edits,
         filter_single_edit_span, # alternative step: split_into_continuous_edits,
-        filter_additions(min_length=3, max_length=20),
-        extract_context_around_diff(ctx_window_size=5),
+        filter_additions(min_length=3, max_length=200),
+        extract_sentence_context_around_target(1, 1), # original: extract_context_around_diff(ctx_window_size=5),
+        
         project_to_fields([
             'rev_id', 'page_id', 'parent_id', 'timestamp',
             'src_text', 'tgt_text', 'comment_text',
             'section_title', 'page_title',
-            'src_tokens', 'tgt_tokens', 'src_action', 'tgt_action', 
+            'src_tokens', 'tgt_tokens', 'src_action', 'tgt_action',
+            'left_context', 'right_context', "left_text", "right_text",
             'grounding_urls'])
         ]
     

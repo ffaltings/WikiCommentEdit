@@ -71,12 +71,11 @@ def has_grounding(look_in_src = True, look_in_tgt = True):
         if look_in_tgt: sources.append(instance["tgt_text"])
         if any("http://" in source for source in sources):
             source_text = "".join(sources)
-            instance["grounding_urls"] = list(set(re.findall(r"https?://[^\s|\]]+", source_text)))
+            url_set = set(re.findall(r"https?://[^\s|\]]+", source_text))
+            instance["grounding_urls"] = [url.lower() for url in url_set]
             yield instance
 
     return has_grounding
-
-
 
 def remove_all_urls(replacement=''):
     @Profiled.generator
@@ -101,14 +100,3 @@ def grounding_domain_whitelist(whitelist=[], file=None):
             yield instance
 
     return grounding_domain_whitelist
-
-
-def extract_left_right_context(left_window_size, right_window_size):
-    def generate(instance):
-        if len(instance["src_action"]) < 1:
-            return
-        #start_token_idx = instance["src_action"][0]
-        #end_token_idx = instance["src_action"][-1]
-        yield instance
-
-    return generate
