@@ -7,32 +7,30 @@ from nltk.corpus import stopwords
 def extract_text_bs4(html):
     return BeautifulSoup(html).get_text()
 
-def extract_overlapping_tokens(target_length):
+def extract_overlapping_tokens(target_length, reference_tokens, grounding_doc_tokens):
     """Extracts a subslice from a list of grounding_doc_tokens of give target_length that
     has the most occurences of tokens from a given set of reference_tokens"""
 
-    def extract_overlapping_tokens(reference_tokens, grounding_doc_tokens):
-        if len(grounding_doc_tokens) < target_length:
-            return target_length
+    if len(grounding_doc_tokens) < target_length:
+        # if the grounding document is shorter than target length, return it unaltered
+        return grounding_doc_tokens
 
-        reference_tokens = set(reference_tokens)
+    reference_tokens = set(reference_tokens)
 
-        # compute for each ending index of the subslice the number of tokens in the reference token set..
-        is_in_ref = [int(t in reference_tokens) for t in grounding_doc_tokens]
-        in_ref_counts = list(accumulate(is_in_ref))
-        count_here = [in_ref_counts[end] - in_ref_counts[end - target_length] for end in range(target_length, len(in_ref_counts))]
+    # compute for each ending index of the subslice the number of tokens in the reference token set..
+    is_in_ref = [int(t in reference_tokens) for t in grounding_doc_tokens]
+    in_ref_counts = list(accumulate(is_in_ref))
+    count_here = [in_ref_counts[end] - in_ref_counts[end - target_length] for end in range(target_length, len(in_ref_counts))]
 
-        # determine the possible indices of slices with a maximum count of reference tokenso
-        best_count = max(count_here)
-        best_ending_indices = [idx for (idx, c) in enumerate(count_here) if c == best_count]
+    # determine the possible indices of slices with a maximum count of reference tokenso
+    best_count = max(count_here)
+    best_ending_indices = [idx for (idx, c) in enumerate(count_here) if c == best_count]
 
-        # select the slice in the middle of the candidate positions (equal padding left and right)
-        best_end_idx = best_ending_indices[len(best_ending_indices) // 2]
-        start_idx = best_end_idx - target_length
-        subslice = grounding_doc_tokens[start_idx:best_end_idx]
-        return subslice
-
-    return extract_overlapping_tokens
+    # select the slice in the middle of the candidate positions (equal padding left and right)
+    best_end_idx = best_ending_indices[len(best_ending_indices) // 2]
+    start_idx = best_end_idx - target_length
+    subslice = grounding_doc_tokens[start_idx:best_end_idx]
+    return subslice
 
 if __name__ == '__main__':
     from common_crawl import CommonCrawlS3
@@ -42,5 +40,5 @@ if __name__ == '__main__':
     tokens = word_tokenize(text)
 
     # example: extract the 100 token subslice containing the most stopwords:
-    overlap = extract_overlapping_tokens(100)(stopwords.words('english'), tokens)
+    overlap = extract_overlapping_tokens(100, stopwords.words('english'), tokens)
     print(overlap)

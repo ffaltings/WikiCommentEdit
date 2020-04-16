@@ -100,3 +100,28 @@ def grounding_domain_whitelist(whitelist=[], file=None):
             yield instance
 
     return grounding_domain_whitelist
+
+
+def extract_common_crawl_groundings(target_length):
+    from common_crawl import CommonCrawlS3
+    from grounding_helpers import extract_overlapping_tokens
+    from grounding_helpers import extract_text_bs4
+    from nltk import word_tokenize
+    cc = CommonCrawlS3()
+
+    @Profiled.generator
+    def extract_common_crawl_groundings(instance):
+        reference_tokens = set(instance["tgt_tokens"])
+
+        def download_grounding(url):
+            html = cc.get_html(url)
+            if not html: return None
+            text = extract_text_bs4(html)
+            grounding_tokens = word_tokenize(text)
+            overlap = extract_overlapping_tokens(target_length, reference_tokens, grounding_tokens)
+            return overlap
+
+        instance["grounding_docs"] = list(filter(None, map(download_grounding, instance["grounding_urls"])))
+        yield instance
+    
+    return extract_common_crawl_groundings

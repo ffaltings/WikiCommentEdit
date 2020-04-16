@@ -1,4 +1,5 @@
 import json, requests, gzip
+import logging
 from io import StringIO, BytesIO
 
 def get_first_or_none(iter):
@@ -8,19 +9,19 @@ class CommonCrawlS3():
 
     DefaultIndices = [
         'CC-MAIN-2020-16-index',
-        'CC-MAIN-2020-10-index',
-        'CC-MAIN-2020-05-index',
-        'CC-MAIN-2019-51-index',
-        'CC-MAIN-2019-47-index',
-        'CC-MAIN-2019-43-index',
-        'CC-MAIN-2019-39-index',
-        'CC-MAIN-2019-35-index',
-        'CC-MAIN-2019-30-index',
-        'CC-MAIN-2019-26-index',
-        'CC-MAIN-2019-22-index',
-        'CC-MAIN-2019-18-index',
-        'CC-MAIN-2019-13-index',
-        'CC-MAIN-2019-09-index',
+        #'CC-MAIN-2020-10-index',
+        #'CC-MAIN-2020-05-index',
+        #'CC-MAIN-2019-51-index',
+        #'CC-MAIN-2019-47-index',
+        #'CC-MAIN-2019-43-index',
+        #'CC-MAIN-2019-39-index',
+        #'CC-MAIN-2019-35-index',
+        #'CC-MAIN-2019-30-index',
+        #'CC-MAIN-2019-26-index',
+        #'CC-MAIN-2019-22-index',
+        #'CC-MAIN-2019-18-index',
+        #'CC-MAIN-2019-13-index',
+        #'CC-MAIN-2019-09-index',
         'CC-MAIN-2019-04-index'
     ]
 
@@ -37,8 +38,13 @@ class CommonCrawlS3():
             with gzip.GzipFile(fileobj = raw_data) as f:
                 data = f.read().decode("utf8")
                 sections = data.strip().split('\r\n\r\n', 2)
-                if len(sections) != 3: return None
+                if len(sections) != 3:
+                    logging.error("Received a non-standard data blob from CommonCrawl for page {}".format(str(meta)))
+                    return None
                 warc, header, response = sections
+                if not "200 OK" in header:
+                    # found the page in CC, but a non 200 HTTP code was crawled!
+                    return None
                 return response
 
     def get_html_from_index(self, index, url):
@@ -57,6 +63,7 @@ class CommonCrawlS3():
 
 if __name__ == "__main__":
     from grounding_helpers import extract_text_bs4
+    
     cc = CommonCrawlS3()
     html = cc.get_html("https://en.wikipedia.org/wiki/Barack_Obama")
     text = extract_text_bs4(html)

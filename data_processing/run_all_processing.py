@@ -43,8 +43,6 @@ def process(input_stream, output_stream, extractor, base_generator, processors):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--index', type=int, help='the index of the file (within the dump status file) to download and process')
-    #parser.add_argument('--start', type=int, default=1, help='the first file to download [default: 0]')
-    #parser.add_argument('--end', type=int, default=-1, help='the last file to download [default: -1]')
     parser.add_argument('--dumpstatus_path', type=str, default='./data/dumpstatus.json')
     parser.add_argument('--temp-path', type=str, default="./data/raw/", help='the temp / data directory, used to download wiki dump files')
     parser.add_argument('--output-path', type=str, default="./data/out/", help='the output directory')
@@ -91,14 +89,14 @@ if __name__ == "__main__":
         filter_single_edit_span, # alternative step: split_into_continuous_edits,
         filter_additions(min_length=3, max_length=200),
         extract_sentence_context_around_target(1, 1), # original: extract_context_around_diff(ctx_window_size=5),
-        
+        extract_common_crawl_groundings(target_length=200), # download grounding documents from CommonCrawl
         project_to_fields([
             'rev_id', 'page_id', 'parent_id', 'timestamp',
             'src_text', 'tgt_text', 'comment_text',
             'section_title', 'page_title',
             'src_tokens', 'tgt_tokens', 'src_action', 'tgt_action',
             'left_context', 'right_context', "left_text", "right_text",
-            'grounding_urls'])
+            'grounding_urls', "grounding_docs"])
         ]
     
     process(
