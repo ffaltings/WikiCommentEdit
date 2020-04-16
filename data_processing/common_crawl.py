@@ -1,7 +1,4 @@
-import json
-import requests
-import gzip
-import csv
+import json, requests, gzip
 from io import StringIO, BytesIO
 
 def get_first_or_none(iter):
@@ -36,13 +33,13 @@ class CommonCrawlS3():
         offset_end = offset + length - 1
         prefix = 'https://commoncrawl.s3.amazonaws.com/'
         resp = requests.get(prefix + meta['filename'], headers={'Range': 'bytes={}-{}'.format(offset, offset_end)})
-        raw_data = BytesIO(resp.content)
-        f = gzip.GzipFile(fileobj = raw_data)
-        data = f.read().decode("utf8")
-        sections = data.strip().split('\r\n\r\n', 2)
-        if len(sections) != 3: return None
-        warc, header, response = sections
-        return response
+        with BytesIO(resp.content) as raw_data:
+            with gzip.GzipFile(fileobj = raw_data) as f:
+                data = f.read().decode("utf8")
+                sections = data.strip().split('\r\n\r\n', 2)
+                if len(sections) != 3: return None
+                warc, header, response = sections
+                return response
 
     def get_html_from_index(self, index, url):
         index_url = 'http://index.commoncrawl.org/' + index
