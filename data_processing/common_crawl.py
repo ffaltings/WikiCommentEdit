@@ -56,6 +56,8 @@ class CommonCrawlS3():
 
 
 if __name__ == "__main__":
+    from grounding_helpers import extract_text_bs4
     cc = CommonCrawlS3()
     html = cc.get_html("https://en.wikipedia.org/wiki/Barack_Obama")
-    print(html)
+    text = extract_text_bs4(html)
+    print(text)
