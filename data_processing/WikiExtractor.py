@@ -149,7 +149,7 @@ options = SimpleNamespace(
 
     ##
     # Whether to preserve section titles
-    keepSections = True,
+    keepSections = False,
 
     ##
     # Whether to preserve lists
@@ -2532,7 +2532,6 @@ def compact(text):
     """Deal with headers, lists, empty sections, residuals of tables.
     :param text: convert to HTML.
     """
-
     page = []             # list of paragraph
     headers = {}          # Headers for unfilled sections
     emptySection = False  # empty sections are discarded

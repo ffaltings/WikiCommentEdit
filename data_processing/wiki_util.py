@@ -22,8 +22,6 @@ nltk.data.path.append('./nltk_data/')
 from nltk.translate.bleu_score import sentence_bleu
 from nltk import word_tokenize
 
-from azure.storage.blob import BlobServiceClient, BlobClient
-
 RevisionMETA = collections.namedtuple("RevisionMETA", ['comment_text',
     'rev_id', 'parent_id', 'text_length', 'section_title', 'page_title'])
 
@@ -704,6 +702,8 @@ def extractSectionTitle(comment):
         sect_cmnt = html.unescape(comment_match.group(2).strip()).strip()
     return sect_title, sect_cmnt
 
+# TODO: escape sect_title at some point in case section titles contain markup
+# e.g. /* Sejm of the [[Kingdom of Polan]] and the [[Polish-Lithuanian Commonwealth]] */
 def extractSectionText(text, sect_title):
     sect_content = ''
     text_match = re.search('(=+)\s*' + sect_title + '\s*(=+)', text)

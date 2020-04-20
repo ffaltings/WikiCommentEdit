@@ -30,6 +30,14 @@ selfClosing_tag_patterns = [
 
 def clean_wiki_text(wikitext):
 
+    # remove section titles since they are otherwise included
+    # by compact. Eventually have to refactor compact to avoid this
+
+    # could force pattern to match start and end of lines, but more forceful
+    # filtering is not an issue here.
+    section_title_pattern = '(=+\s*.+\s*=+)'
+    re.sub(section_title_pattern, '', wikitext)
+
     return compact(clean(wiki2text(transform(wikitext))))
 
 def transform(wikitext):
