@@ -1,3 +1,5 @@
+from functools import reduce
+
 def chain_generators(iterable, list_of_generators):
     """
     Takes a base iterable and a list of generators g_n(x).
@@ -8,12 +10,13 @@ def chain_generators(iterable, list_of_generators):
         return (item for inner in nested_iterable for item in inner)
 
     # IMPORTANT: this function can NOT be inlined. Python scope/shadowing intricacies would break it
-    def apply(gen, iterable): return (gen(x) for x in iterable)
+    def apply(gen, iterable): 
+        return (gen(x) for x in iterable)
 
-    result = iterable
-    for gen in list_of_generators:
-        result = flatten1(apply(gen, result))
-    return result
+    def flatmap(iter, gen):
+        return flatten1(apply(gen, iter))
+
+    return reduce(flatmap, list_of_generators, iterable)
 
 if __name__ == "__main__":
     """This is a demo of how generators are chained"""

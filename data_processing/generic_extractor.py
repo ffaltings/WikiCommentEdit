@@ -63,7 +63,8 @@ def generate_revision_pairs(wiki_stream, max_bytes=None):
                     + 'Time elapsed (hh:mm:ss.ms) {}'.format(time_elapsed) + ' ===')
 
 @Profiled.generator
-def generate_section_pairs(meta):
+def restrict_to_section(meta):
+    """Cuts the text (source, target) to only contain the section mentioned in the comment"""
     try:
         if not meta["section_title"]:
             return
@@ -179,7 +180,12 @@ def filter_additions(min_length, max_length):
     def filter_additions(instance):
         len_tgt_diff = len(instance['tgt_token_diff'])
         len_src_diff = len(instance['src_token_diff'])
-        if len_src_diff == 0 and len_tgt_diff >= min_length and len_tgt_diff < max_length: 
+        len_src = len(instance['src_tokens'])
+        len_tgt = len(instance['tgt_tokens'])
+        tokens_added = len_tgt - len_src
+        nothing_changed_in_src = len_src_diff == 0
+        only_added = len_tgt_diff == tokens_added
+        if nothing_changed_in_src and only_added and tokens_added >= min_length and tokens_added < max_length: 
             yield instance
     return filter_additions
 
@@ -247,7 +253,7 @@ def extract_sentence_context_around_target(left_sentences=1, right_sentences=1):
         for key in [key for key in instance if key.startswith("src_")]: del instance[key]
         yield instance
 
-    return extract_context_by_sentences
+    return extract_sentence_context_around_target
 
 def project_to_fields(accepted_fields):
     """Creates a projection of the instance to a pre-supplied set of fields"""
