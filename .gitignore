@@ -116,3 +116,6 @@ data_processing/extractor.txt
 
 # Notebooks
 /notebooks/
+
+# Dockerfile
+Dockerfile
