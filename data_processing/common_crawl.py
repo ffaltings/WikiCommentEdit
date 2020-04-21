@@ -7,6 +7,9 @@ def get_first_or_none(iter):
 
 class CommonCrawlS3():
 
+    # hide logging of urllib3
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
     DefaultIndices = [
         'CC-MAIN-2020-16-index',
         #'CC-MAIN-2020-10-index',
@@ -27,6 +30,9 @@ class CommonCrawlS3():
 
     def __init__(self, indices = DefaultIndices):
         self.indices = indices
+        self.cache = {} # TODO: limit memory of this cache
+        self.call_count = 0
+        self.fail_count = 0
 
     @staticmethod
     def fetch_html_from_s3_file(meta):
@@ -57,9 +63,20 @@ class CommonCrawlS3():
         return get_first_or_none(map(CommonCrawlS3.fetch_html_from_s3_file, references))
         
     def get_html(self, url):
-        all_indices = (self.get_html_from_index(index, url) for index in self.indices)
-        return get_first_or_none(all_indices)
+        if url in self.cache:
+            return self.cache[url]
 
+        self.call_count += 1
+        all_indices = (self.get_html_from_index(index, url) for index in self.indices)
+        result = get_first_or_none(all_indices)
+        self.cache[url] = result
+        if result is None:
+            self.fail_count += 1
+            fail_percent = self.fail_count * 100 / self.call_count
+            logging.debug("Could not fetch grounding for {:}. Failed: {}/{} ({:.1f}%)"
+                .format(url, self.fail_count, self.call_count, fail_percent))
+            self.cache[url] = None
+        return result
 
 if __name__ == "__main__":
     from grounding_helpers import extract_text_bs4

@@ -120,8 +120,13 @@ def extract_common_crawl_groundings(target_length):
             grounding_tokens = word_tokenize(text)
             overlap = extract_overlapping_tokens(target_length, reference_tokens, grounding_tokens)
             return overlap
-
         instance["grounding_docs"] = list(filter(None, map(download_grounding, instance["grounding_urls"])))
         yield instance
     
     return extract_common_crawl_groundings
+
+@Profiled.generator
+def remove_without_grounding_docs(instance):
+    """Removes all documents lacking a grounding document"""
+    if instance.get("grounding_docs"):
+        yield instance

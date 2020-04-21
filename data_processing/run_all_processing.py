@@ -90,6 +90,7 @@ if __name__ == "__main__":
         filter_additions(min_length=3, max_length=200),
         extract_sentence_context_around_target(1, 1), # original: extract_context_around_diff(ctx_window_size=5),
         extract_common_crawl_groundings(target_length=200), # download grounding documents from CommonCrawl
+        remove_without_grounding_docs,
         project_to_fields([
             'rev_id', 'page_id', 'parent_id', 'timestamp',
             'src_text', 'tgt_text', 'comment_text',
