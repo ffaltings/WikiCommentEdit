@@ -1,7 +1,7 @@
 # TODO: Fix references to include self closing tags (<ref name=... />)
 
-#from dotenv import load_dotenv
-#load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 
 import sys
 import datetime
@@ -12,6 +12,7 @@ import argparse
 import os
 import io
 import html
+import copy
 import itertools
 from nltk import word_tokenize
 from sentence_splitter import SentenceSplitter
@@ -19,18 +20,44 @@ from tempfile import TemporaryFile, NamedTemporaryFile
 from profanityfilter import ProfanityFilter
 
 from wiki_util import *
-from wiki_dump_download import existFile
+#from wiki_dump_download import existFile
 #from run_all_processing import process, scriptdir
 from custom_extractors import NDJsonExtractor
 from generic_extractor import generate_revision_pairs
 from generator_chaining import chain_generators
 from wikitext_processing import clean_wiki_text
+from custom_filters import exclude_page_types, has_section_title, has_comment
+
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
 def unescapeHTML(revision):
     revision['src_text'] = html.unescape(revision['src_text'])
     revision['tgt_text'] = html.unescape(revision['tgt_text'])
     yield revision
-    
+
+def retrieveSection(revision):
+    def _retrieveSection(text, title):
+        sections, titles = split_into_sections(text)
+        try:
+            sect_idx = titles.index(title)
+        except ValueError:
+            return ''
+        return sections[sect_idx]
+
+    title = re.escape(revision['section_title']) #important to escape title
+    src_sect = extractSectionText(revision['src_text'], title)
+    tgt_sect = extractSectionText(revision['tgt_text'], title)
+
+    #only yield if found section in both source and target texts
+    if src_sect and tgt_sect: 
+        # remove some unused fields, restructure revision
+        revision.pop('src_text')
+        revision.pop('tgt_text')
+        revision['source'] = {'text': src_sect}
+        revision['target'] = {'text': tgt_sect}
+
+        yield revision
+
 def splitSections(revision):
     source_sections, source_titles = split_into_sections(revision['src_text'])
     target_sections, target_titles = split_into_sections(revision['tgt_text'])
@@ -47,7 +74,7 @@ def splitSections(revision):
             'page_id': revision['page_id'],
             'page_title': revision['page_title'],
             'comment_text': revision['comment_text'],
-            'sect_title': src_title,
+            'section_title': src_title,
             'source': {
                 'text': src_sect
                 },
@@ -67,7 +94,6 @@ def processRefs(revision): #TODO: extract urls from refs and merge source and ta
 def stripMarkup(revision):
 #    revision['source']['text'] = str(mwparserfromhell.parse(revision['source']['text']).strip_code())
 #    revision['target']['text'] = str(mwparserfromhell.parse(revision['target']['text']).strip_code())
-
     revision['source']['text'] = ' '.join(clean_wiki_text(revision['source']['text']))
     revision['target']['text'] = ' '.join(clean_wiki_text(revision['target']['text']))
 
@@ -110,27 +136,41 @@ def splitSentences(k=5):
             
             src_ctx = revision['target']['sentences'][max(i-k, 0):i]
             tgt_ctx = revision['target']['sentences'][max(match_idx-k,0):match_idx]
-            
-            sent_revision = {
-                'comment_text': revision['comment_text'],
-                'page_id': revision['page_id'],
-                'page_title': revision['page_title'],
-                'rev_id': revision['rev_id'],
-                'refs': revision['refs'],
-                'sect_title': revision['sect_title'],
-                'source': {
+            # deep copy is a potential slow down. Can speed up at the cose
+            # of making the code less maintainable (i.e. select which fields
+            # to copy right here...)
+            sent_revision = copy.deepcopy(revision) # deep copy revision
+            sent_revision['source'] = {
                     'sentence': src_sent,
                     'tokens': s,
-                    'context': src_ctx
-                },
-                'target': {
-                    'sentence': tgt_sent,
-                    'tokens': tgt_tokens,
-                    'context': tgt_ctx,
-                    'match_score': match_score
-                }
-            }
-            
+                    'context': src_ctx}
+            sent_revision['target'] = {
+                'sentence': tgt_sent,
+                'tokens': tgt_tokens,
+                'context': tgt_ctx,
+                'match_score': match_score}
+
+
+      #      sent_revision = {
+      #          'comment_text': revision['comment_text'],
+      #          'page_id': revision['page_id'],
+      #          'page_title': revision['page_title'],
+      #          'rev_id': revision['rev_id'],
+      #          'refs': revision['refs'],
+      #          'section_title': revision['section_title'],
+      #          'source': {
+      #              'sentence': src_sent,
+      #              'tokens': s,
+      #              'context': src_ctx
+      #          },
+      #          'target': {
+      #              'sentence': tgt_sent,
+      #              'tokens': tgt_tokens,
+      #              'context': tgt_ctx,
+      #              'match_score': match_score
+      #          }
+      #      }
+      #      
             yield sent_revision
 
     return generator
@@ -168,96 +208,20 @@ def process(input_stream, output_stream, extractor, base_generator, processors, 
     for instance in tqdm(results, "final results", mininterval=3.0):
         extractor.write_instance(output_stream, instance)
 
-def sampleEdits(dump_file, output_file):
-    logger = logging.getLogger(__name__)
-    json_file = open(output_file, 'w', buffering=1, encoding='utf-8')
-    start_time = datetime.datetime.now()
-    wiki_file = bz2.open(dump_file, 'rt', encoding='utf-8')
-
-    edit_count = 0
-    revision_count = 0
-    page_count = 0
-
-    prev_page_title = ''
-    prev_comment = ''
-    prev_text = ''
-
-    try:
-        for page_title, revision in split_records(wiki_file):
-            revision_count += 1
-            if revision_count % 200 == 0:
-                logging.debug("{} revisions processed".format(revision_count))
-
-            rev_id, parent_id, timestamp, username, userid, userip, comment,\
-                    text = extract_data(revision)
-
-            comment = cleanCmntText(comment)
-
-            if prev_page_title != page_title:
-                page_count += 1
-                prev_page_tile = page_title
-
-            text = html.unescape(text)
-
-            for i, (src, tgt, src_ctx, tgt_ctx, src_diff, tgt_diff) in enumerate(split_edits(text,prev_text)):
-                json_dict = {'revision_id': rev_id, 'parent_id': parent_id,\
-                        'timestamp': timestamp, 'username': username,\
-                        'userid': userid, 'comment': comment, 
-                        'source_sentence': src, 'target_sentence': tgt,
-                        'source_context': src_ctx, 'target_context': tgt_ctx,
-                        'source_diff': src_diff, 'target_diff': tgt_diff}
-
-                json_str = json.dumps(json_dict, indent=None, sort_keys=False,
-                        separators=(',',': '), ensure_ascii=False)
-                json_file.write(json_str + '\n')
-                edit_count += 1
-
-            prev_comment = comment
-            prev_text = text
-
-            if edit_count >= 1: break
-
-    finally:
-        time_elapsed = datetime.datetime.now() - start_time
-        logger.debug("=== " + str(edit_count) + " edits sampled out of " \
-                + str(revision_count) + "revisions. Time elapsed: "\
-                + str(time_elapsed))
-
-        json_file.close()
-
 if __name__ == '__main__':
-
-#    parser = argparse.ArgumentParser()
-#    parser.add_argument('--dump_file', type=str,\
-#            default='raw/wikipedia-subsample/enwiki-sample-history1.xml-p1037p2028.txt.bz2')
-#    parser.add_argument('--output_file', type=str,\
-#            default='processed/atomic-edits/enwiki-sample-p1037p2028.json')
-#    parser.add_argument('--container_name', type=str,\
-#            default='wikipedia-data')
-#    args = parser.parse_args()
-#
-#    connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-#    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-#    blob_client = blob_service_client.get_blob_client(container=args.container_name,\
-#            blob=args.dump_file)
-#    with open('input.text.bz', 'wb') as download_file:
-#        download_file.write(blob_client.download_blob().readall())    
-#
-#    logging.basicConfig(level=logging.DEBUG,
-#            format='(%(threadName)s) (%(name)s) %(message)s',
-#            )
-#    
-#    sampleEdits('input.text.bz','output.json')
-#
-    
     parser = argparse.ArgumentParser()
     parser.add_argument('--index', type=int, help='index of file to process', default=1)
+    parser.add_argument('--input_dir', type=str, help='directory on disk to read from',
+            default='/mnt/nlp-storage/data/raw/wikipedia-subsample/')
+    parser.add_argument('--output_dir', type=str, help='directory on disk to write to',
+            default='/mnt/nlp-storage/data/processed/atomic-edits/temp/')
+    parser.add_argument('--azure', action='store_true', default=False, help='whether to read from azure')
     parser.add_argument('--container', type=str, help='aws container', default='wikipedia-data')
     parser.add_argument('--blob_path', type=str, help='blob prefix on azure',
             default='raw/wikipedia-subsample')
     parser.add_argument('--out_path', type=str, default='processed/atomic-edits/latest/')
     parser.add_argument('--max_edits', type=int, default=0)
-    parser.add_argument('--temp_dir', type=str, default='tmp')
+    parser.add_argument('--temp_dir', type=str, default='tmp') # TODO: remove this line?
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)s) (%(name)s) %(message)s')
     logger = logging.getLogger('azure')
@@ -266,27 +230,41 @@ if __name__ == '__main__':
     logger.setLevel(logging.ERROR)
     logger = logging.getLogger(__name__)
 
-    # set up azure connection
-    connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
     
-    container_client = blob_service_client.get_container_client(args.container)
-    in_blobs = [b.name for b in container_client.list_blobs() if args.blob_path in b.name]
-    dump_blob = in_blobs[args.index]
+    if args.azure:
+        # set up azure connection
+        connect_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+        
+        container_client = blob_service_client.get_container_client(args.container)
+        in_blobs = [b.name for b in container_client.list_blobs() if args.blob_path in b.name]
+        dump_blob = in_blobs[args.index]
 
-    logger.debug('processing file: {}'.format(dump_blob))
+        logger.debug('processing file: {}'.format(dump_blob))
 
-    input_file = NamedTemporaryFile()
-    output_file = NamedTemporaryFile()
+        input_file = NamedTemporaryFile()
+        output_file = NamedTemporaryFile()
+        
+        blob_client = blob_service_client.get_blob_client(container=args.container,\
+                blob=dump_blob)
+        
+        with open(input_file.name, 'wb') as f:
+            f.write(blob_client.download_blob().readall())
+        
+        wiki_input_stream = bz2.open(input_file.name, 'rt', encoding='utf-8')
+        json_output_stream = open(output_file.name, 'w', buffering=1, encoding='utf-8')
+
+    else:
+        in_files = glob.glob(os.path.join(args.input_dir, "*.txt.bz2"))
+        in_file = in_files[args.index]
+
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+        out_file = os.path.join(args.output_dir, 'enwiki-sample-' + os.path.basename(in_file)[27:-8] + '.json')
+        wiki_input_stream = bz2.open(in_file, 'rt', encoding='utf-8')
+        json_output_stream = open(out_file, 'w', buffering=1, encoding='utf-8')
     
-    blob_client = blob_service_client.get_blob_client(container=args.container,\
-            blob=dump_blob)
-    
-    with open(input_file.name, 'wb') as f:
-        f.write(blob_client.download_blob().readall())
-    
-    wiki_input_stream = bz2.open(input_file.name, 'rt', encoding='utf-8')
-    json_output_stream = open(output_file.name, 'w', buffering=1, encoding='utf-8')
+
 
     process(
         wiki_input_stream,
@@ -294,8 +272,12 @@ if __name__ == '__main__':
         extractor = NDJsonExtractor(),
         base_generator = generate_revision_pairs,
         processors = [
+            exclude_page_types(["Talk:", "User", "Wikipedia"]),
+            has_section_title,
+            has_comment,
             unescapeHTML,
-            splitSections,
+            retrieveSection,
+   #         splitSections,
             processRefs,
             stripMarkup,
             tokenize,
@@ -307,16 +289,17 @@ if __name__ == '__main__':
     )
 
     wiki_input_stream.close()
-    input_file.close() # deletes temp file
     json_output_stream.close()
-    
-    out_blob = args.out_path + 'enwiki-sample-' + os.path.basename(dump_blob)[27:-8] + '.json'
-    blob_client = blob_service_client.get_blob_client(container=args.container,\
-            blob=out_blob)
-    with open(output_file.name, 'rb') as data:
-        blob_client.upload_blob(data, overwrite=True)
+   
+    if args.azure:
+        out_blob = args.out_path + 'enwiki-sample-' + os.path.basename(dump_blob)[27:-8] + '.json'
+        blob_client = blob_service_client.get_blob_client(container=args.container,\
+                blob=out_blob)
+        with open(output_file.name, 'rb') as data:
+            blob_client.upload_blob(data, overwrite=True)
 
-    output_file.close()
+        input_file.close() # deletes temp file
+        output_file.close()
  
 
 

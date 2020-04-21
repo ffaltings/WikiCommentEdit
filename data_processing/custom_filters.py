@@ -11,6 +11,9 @@ def page_id_filter(accepted_ids):
             yield meta
     return generate
 
+def has_comment(meta):
+    if meta["comment_text"]: yield meta
+
 def comment_length(min_len, max_len):
     @Profiled.generator
     def comment_length(meta):
