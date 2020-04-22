@@ -41,81 +41,22 @@ class CommonCrawlS3():
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     DefaultIndices = [
-        'CC-MAIN-2020-16',
-        'CC-MAIN-2020-10',
-        'CC-MAIN-2020-05',
-        'CC-MAIN-2019-51',
-        'CC-MAIN-2019-47',
-        'CC-MAIN-2019-43',
-        'CC-MAIN-2019-39',
-        'CC-MAIN-2019-35',
-        'CC-MAIN-2019-30',
-        'CC-MAIN-2019-26',
-        'CC-MAIN-2019-22',
-        'CC-MAIN-2019-18',
-        'CC-MAIN-2019-13',
-        'CC-MAIN-2019-09',
-        'CC-MAIN-2019-04',
-        'CC-MAIN-2018-51',
-        'CC-MAIN-2018-47',
-        'CC-MAIN-2018-43',
-        'CC-MAIN-2018-39',
-        'CC-MAIN-2018-34',
-        'CC-MAIN-2018-30',
-        'CC-MAIN-2018-26',
-        'CC-MAIN-2018-22',
-        'CC-MAIN-2018-17',
-        'CC-MAIN-2018-13',
-        'CC-MAIN-2018-09',
-        'CC-MAIN-2018-05',
-        'CC-MAIN-2017-51',
-        'CC-MAIN-2017-47',
-        'CC-MAIN-2017-43',
-        'CC-MAIN-2017-39',
-        'CC-MAIN-2017-34',
-        'CC-MAIN-2017-30',
-        'CC-MAIN-2017-26',
-        'CC-MAIN-2017-22',
-        'CC-MAIN-2017-17',
-        'CC-MAIN-2017-13',
-        'CC-MAIN-2017-09',
-        'CC-MAIN-2017-04',
-        'CC-MAIN-2016-50',
-        'CC-MAIN-2016-44',
-        'CC-MAIN-2016-40',
-        'CC-MAIN-2016-36',
-        'CC-MAIN-2016-30',
-        'CC-MAIN-2016-26',
-        'CC-MAIN-2016-22',
-        'CC-MAIN-2016-18',
-        'CC-MAIN-2016-07',
-        'CC-MAIN-2015-48',
-        'CC-MAIN-2015-40',
-        'CC-MAIN-2015-35',
-        'CC-MAIN-2015-32',
-        'CC-MAIN-2015-27',
-        'CC-MAIN-2015-22',
-        'CC-MAIN-2015-18',
-        'CC-MAIN-2015-14',
-        'CC-MAIN-2015-11',
-        'CC-MAIN-2015-06',
-        'CC-MAIN-2014-52',
-        'CC-MAIN-2014-49',
-        'CC-MAIN-2014-42',
-        'CC-MAIN-2014-41',
-        'CC-MAIN-2014-35',
-        'CC-MAIN-2014-23',
-        'CC-MAIN-2014-15',
-        'CC-MAIN-2014-10',
-        'CC-MAIN-2013-48',
-        'CC-MAIN-2013-20',
-        'CC-MAIN-2012',
-        'CC-MAIN-2009-2010',
-        'CC-MAIN-2008-2009'
-    ]
+            'CC-MAIN-2020-16', 'CC-MAIN-2020-10', 'CC-MAIN-2020-05', 'CC-MAIN-2019-51', 'CC-MAIN-2019-47', 'CC-MAIN-2019-43',
+            'CC-MAIN-2019-39', 'CC-MAIN-2019-35', 'CC-MAIN-2019-30', 'CC-MAIN-2019-26', 'CC-MAIN-2019-22', 'CC-MAIN-2019-18',
+            'CC-MAIN-2019-13', 'CC-MAIN-2019-09', 'CC-MAIN-2019-04', 'CC-MAIN-2018-51', 'CC-MAIN-2018-47', 'CC-MAIN-2018-43',
+            'CC-MAIN-2018-39', 'CC-MAIN-2018-34', 'CC-MAIN-2018-30', 'CC-MAIN-2018-26', 'CC-MAIN-2018-22', 'CC-MAIN-2018-17',
+            'CC-MAIN-2018-13', 'CC-MAIN-2018-09', 'CC-MAIN-2018-05', 'CC-MAIN-2017-51', 'CC-MAIN-2017-47', 'CC-MAIN-2017-43',
+            'CC-MAIN-2017-39', 'CC-MAIN-2017-34', 'CC-MAIN-2017-30', 'CC-MAIN-2017-26', 'CC-MAIN-2017-22', 'CC-MAIN-2017-17',
+            'CC-MAIN-2017-13', 'CC-MAIN-2017-09', 'CC-MAIN-2017-04', 'CC-MAIN-2016-50', 'CC-MAIN-2016-44', 'CC-MAIN-2016-40',
+            'CC-MAIN-2016-36', 'CC-MAIN-2016-30', 'CC-MAIN-2016-26', 'CC-MAIN-2016-22', 'CC-MAIN-2016-18', 'CC-MAIN-2016-07',
+            'CC-MAIN-2015-48', 'CC-MAIN-2015-40', 'CC-MAIN-2015-35', 'CC-MAIN-2015-32', 'CC-MAIN-2015-27', 'CC-MAIN-2015-22',
+            'CC-MAIN-2015-18', 'CC-MAIN-2015-14', 'CC-MAIN-2015-11', 'CC-MAIN-2015-06', 'CC-MAIN-2014-52', 'CC-MAIN-2014-49',
+            'CC-MAIN-2014-42', 'CC-MAIN-2014-41', 'CC-MAIN-2014-35', 'CC-MAIN-2014-23', 'CC-MAIN-2014-15', 'CC-MAIN-2014-10',
+            'CC-MAIN-2013-48', 'CC-MAIN-2013-20', 'CC-MAIN-2012', 'CC-MAIN-2009-2010', 'CC-MAIN-2008-2009' ]
 
-    def __init__(self, indices = DefaultIndices):
+    def __init__(self, indices = DefaultIndices, parallel_attempts = 5):
         self.indices = indices
+        self.parallel_attempts = parallel_attempts
         self.cache = {} # TODO: limit memory of this cache
         self.call_count = 0
         self.fail_count = 0
@@ -159,16 +100,15 @@ class CommonCrawlS3():
             return self.cache[url]
 
         self.call_count += 1
-        result, attempts = first_result_parallel(partial(self.get_html_from_index, url=url), self.indices, n_workers = 10)
+        fetch = partial(self.get_html_from_index, url=url)
+        result, attempts = first_result_parallel(fetch, self.indices, self.parallel_attempts)
         self.cache[url] = result
-        if result is None:
-            self.fail_count += 1
-            fail_percent = self.fail_count * 100 / self.call_count
-            logging.debug("Could not fetch grounding for {:} after trying {} indices. Failed: {}/{} ({:.1f}%)"
-                .format(url, attempts, self.fail_count, self.call_count, fail_percent))
-            self.cache[url] = None
-        else:
-            logging.debug("Succedded fetching grounding document for {} after trying {} indices".format(url, attempts))
+        if result is None: self.fail_count += 1
+        outcome_word = "SUCCEEDED" if result else "FAILED"
+        success_count =  self.call_count - self.fail_count
+        success_percent = success_count * 100 / self.call_count
+        logging.debug("{} fetching grounding document for {} after trying {} indices. Succeeded: {}/{} ({:.1f}%)"
+            .format(outcome_word, url, attempts, success_count, self.call_count, success_percent))
         return result
 
 if __name__ == "__main__":
