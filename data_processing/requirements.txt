@@ -6,3 +6,4 @@ wikitextparser
 mediawiki-parser
 mwparserfromhell
 tqdm
+bs4
