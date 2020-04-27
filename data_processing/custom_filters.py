@@ -114,7 +114,9 @@ def extract_common_crawl_groundings(target_length):
 
     @Profiled.generator
     def extract_common_crawl_groundings(instance):
-        reference_tokens = set(instance["tgt_tokens"])
+        target_tokens = set(instance["tgt_tokens"])
+        approx_tokens = set(instance["comment_text"].split(" "))
+        reference_tokens = target_tokens.union(approx_tokens)
 
         def download_grounding(url):
             try:
@@ -123,12 +125,14 @@ def extract_common_crawl_groundings(target_length):
                 text = extract_text_bs4(html)
                 grounding_tokens = word_tokenize(text)
                 overlap = extract_overlapping_tokens(target_length, reference_tokens, grounding_tokens)
-                return overlap
+                overlap_text = " ".join(overlap) # dirty hack
+                return overlap_text
             except Exception as e:
                 logging.error("Error fetching grounding for {}: {}".format(url, str(e)))
                 return None
         
-        instance["grounding_docs"] = list(filter(None, map(download_grounding, instance["grounding_urls"])))
+        grounding_docs = list(filter(None, map(download_grounding, instance["grounding_urls"])))
+        instance["grounding_docs"] = " ;; ".join(grounding_docs) # dirty hack
         yield instance
     
     return extract_common_crawl_groundings
