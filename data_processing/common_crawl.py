@@ -72,7 +72,8 @@ class CommonCrawlS3():
                 data = f.read().decode("utf8")
                 sections = data.strip().split('\r\n\r\n', 2)
                 if len(sections) != 3:
-                    logging.error("Received a non-standard data blob from CommonCrawl for page {}".format(str(meta)))
+                    # Number of sections != 3 usually occurs for non-200 status codes, i.e. no content was crawled
+                    # logging.error("Received a non-standard data blob from CommonCrawl for page {}".format(str(meta)))
                     return None
                 warc, header, response = sections
                 if not "200 OK" in header:

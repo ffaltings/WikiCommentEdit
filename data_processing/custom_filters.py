@@ -2,7 +2,7 @@
 Contains self-contained isolated filters/processors implemented as python generators
 """
 
-import re
+import logging, re
 from profiling import Profiled
 
 def page_id_filter(accepted_ids):
@@ -117,12 +117,17 @@ def extract_common_crawl_groundings(target_length):
         reference_tokens = set(instance["tgt_tokens"])
 
         def download_grounding(url):
-            html = cc.get_html(url)
-            if not html: return None
-            text = extract_text_bs4(html)
-            grounding_tokens = word_tokenize(text)
-            overlap = extract_overlapping_tokens(target_length, reference_tokens, grounding_tokens)
-            return overlap
+            try:
+                html = cc.get_html(url)
+                if not html: return None
+                text = extract_text_bs4(html)
+                grounding_tokens = word_tokenize(text)
+                overlap = extract_overlapping_tokens(target_length, reference_tokens, grounding_tokens)
+                return overlap
+            except Exception as e:
+                logging.error("Error fetching grounding for {}: {}".format(url, str(e)))
+                return None
+        
         instance["grounding_docs"] = list(filter(None, map(download_grounding, instance["grounding_urls"])))
         yield instance
     

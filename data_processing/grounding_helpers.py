@@ -22,6 +22,9 @@ def extract_overlapping_tokens(target_length, reference_tokens, grounding_doc_to
     in_ref_counts = list(accumulate(is_in_ref))
     count_here = [in_ref_counts[end] - in_ref_counts[end - target_length] for end in range(target_length, len(in_ref_counts))]
 
+    if not len(count_here):
+        return grounding_doc_tokens
+
     # determine the possible indices of slices with a maximum count of reference tokenso
     best_count = max(count_here)
     best_ending_indices = [idx for (idx, c) in enumerate(count_here) if c == best_count]
