@@ -14,7 +14,7 @@ import io
 import html
 import copy
 import itertools
-from nltk import word_tokenize
+from nltk.tokenize import word_tokenize, sent_tokenize
 from sentence_splitter import SentenceSplitter
 from tempfile import TemporaryFile, NamedTemporaryFile
 from profanityfilter import ProfanityFilter
@@ -100,14 +100,14 @@ def stripMarkup(revision):
     yield revision
 
 def tokenize(revision):
-    splitter = SentenceSplitter(language='en') # might want to pass this object by reference?
+    #splitter = SentenceSplitter(language='en') # might want to pass this object by reference?
 
-    def _tokenize(text):
-        return [word_tokenize(s) for s in splitter.split(text) if len(s)]
+    #def _tokenize(text):
+    #    return [word_tokenize(s) for s in splitter.split(text) if len(s)]
 
-    revision['source']['sentences'] = [s for s in splitter.split(revision['source']['text'])\
+    revision['source']['sentences'] = [s for s in sent_tokenize(revision['source']['text'])\
             if len(s)]
-    revision['target']['sentences'] = [s for s in splitter.split(revision['target']['text'])\
+    revision['target']['sentences'] = [s for s in sent_tokenize(revision['target']['text'])\
             if len(s)]
     revision['source']['tokens'] = [word_tokenize(s) for s in revision['source']['sentences']]
     revision['target']['tokens'] = [word_tokenize(s) for s in revision['target']['sentences']]
