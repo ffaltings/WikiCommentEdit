@@ -6,6 +6,7 @@ import logging
 import json
 import os
 import io
+import re
 import itertools
 import mwparserfromhell
 from itertools import accumulate
@@ -85,8 +86,10 @@ def restrict_to_section(meta):
 
 @Profiled.generator
 def clean_markup_mediawikiparser(instance):
-    instance['src_text'] = str(mwparserfromhell.parse(instance['src_text'] ).strip_code())
-    instance['tgt_text'] = str(mwparserfromhell.parse(instance['tgt_text']).strip_code())
+    def remove_refs(s): return re.sub(r"</?ref>", "", s)
+    def parse(s): return remove_refs(str(mwparserfromhell.parse(s).strip_code()))
+    instance['src_text'] = parse(instance['src_text'])
+    instance['tgt_text'] = parse(instance['tgt_text'])
     yield instance
 
 @Profiled.generator

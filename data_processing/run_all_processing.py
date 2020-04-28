@@ -87,7 +87,7 @@ if __name__ == "__main__":
         filter_single_edit_span, # alternative step: split_into_continuous_edits,
         filter_additions(min_length=3, max_length=200),
         extract_sentence_context_around_target(1, 1), # original: extract_context_around_diff(ctx_window_size=5),
-        # extract_common_crawl_groundings(target_length=200) # download grounding documents from CommonCrawl
+        # extract_common_crawl_groundings(target_length=200), # download grounding documents from CommonCrawl
         # remove_without_grounding_docs,
         # project_to_fields([
         #     'rev_id', 'page_id', 'parent_id', 'timestamp',
@@ -95,8 +95,7 @@ if __name__ == "__main__":
         #     'section_title', 'page_title',
         #     'src_tokens', 'tgt_tokens', 'src_action', 'tgt_action',
         #     'left_context', 'right_context', "left_text", "right_text",
-        #     'grounding_urls', "grounding_docs"])
-
+        #     'grounding_urls', "grounding_docs"]),
         save_to_disk(json_output_stream, NDJsonExtractor()) # chose extractor here
     ]
     
