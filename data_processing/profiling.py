@@ -48,6 +48,9 @@ class Profiled:
             line = "- {}: in: {} -> out: {} (accepted {:.1f}%, rejected {:.1f}%)".format(step, in_count, out_count, accepted, rejected)
             summary.append(line)
 
+        # fix elapsed: generators are nested
+        elapsed = [e - e_next for (e, e_next) in zip(elapsed, elapsed[1:] + [timedelta()])]
+
         total_elapsed = sum(elapsed, timedelta(0))
         per_item = total_elapsed / total_in
         summary.append("============================")
