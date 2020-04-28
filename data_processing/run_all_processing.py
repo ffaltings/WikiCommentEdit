@@ -31,13 +31,11 @@ def download_on_demand(url, dump_file, temp_path, compress_type):
 def scriptdir(filename):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
 
-def process(input_stream, output_stream, extractor, base_generator, processors):
+def process(input_stream, base_generator, processors):
     """Applies the base_generator on input_stream, then chains processor steps in processors, finally uses extractor to write to output_stream"""
     iterable = tqdm(base_generator(input_stream), "baseline generator", mininterval=3.0)
     results = chain_generators(iterable, processors)
-
-    for instance in tqdm(results, "final results", mininterval=3.0):
-        extractor.write_instance(output_stream, instance)
+    for _ in tqdm(results, "final results", mininterval=3.0):
         Profiled.total_count += 1
 
 if __name__ == "__main__":
@@ -79,7 +77,7 @@ if __name__ == "__main__":
         text_length(5, 10000000),
         restrict_to_section,
         has_grounding(look_in_src=True, look_in_tgt=True),
-        #grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
+        grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
         remove_all_urls(replacement='URL'),
         clean_markup_mediawikiparser,
         clean_markup_custom,
@@ -89,29 +87,26 @@ if __name__ == "__main__":
         filter_single_edit_span, # alternative step: split_into_continuous_edits,
         filter_additions(min_length=3, max_length=200),
         extract_sentence_context_around_target(1, 1), # original: extract_context_around_diff(ctx_window_size=5),
-        extract_common_crawl_groundings(target_length=200), # download grounding documents from CommonCrawl
-        remove_without_grounding_docs,
-        project_to_fields([
-            'rev_id', 'page_id', 'parent_id', 'timestamp',
-            'src_text', 'tgt_text', 'comment_text',
-            'section_title', 'page_title',
-            'src_tokens', 'tgt_tokens', 'src_action', 'tgt_action',
-            'left_context', 'right_context', "left_text", "right_text",
-            'grounding_urls', "grounding_docs"])
-        ]
+        # extract_common_crawl_groundings(target_length=200) # download grounding documents from CommonCrawl
+        # remove_without_grounding_docs,
+        # project_to_fields([
+        #     'rev_id', 'page_id', 'parent_id', 'timestamp',
+        #     'src_text', 'tgt_text', 'comment_text',
+        #     'section_title', 'page_title',
+        #     'src_tokens', 'tgt_tokens', 'src_action', 'tgt_action',
+        #     'left_context', 'right_context', "left_text", "right_text",
+        #     'grounding_urls', "grounding_docs"])
+
+        save_to_disk(json_output_stream, NDJsonExtractor()) # chose extractor here
+    ]
     
     process(
         wiki_input_stream,
-        json_output_stream,
-        extractor = NDJsonExtractor(), # chose extractor here
         base_generator = partial(generate_revision_pairs, max_bytes=max_bytes), # chose base generator here
         processors=processors
     )
     
     wiki_input_stream.close()
-    if not args.azure:
-        json_output_stream.close()
-    else:
-        upload_to_azure_output_stream()
+    json_output_stream.close()
     logging.info("Done with task %d" % args.index)
     logging.info(Profiled.summarize(processors))

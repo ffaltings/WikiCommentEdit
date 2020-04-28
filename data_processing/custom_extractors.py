@@ -1,9 +1,17 @@
 import json
+from profiling import Profiled
+
+
+def save_to_disk(output_stream, extractor):
+    @Profiled.generator
+    def save_to_disk(instance):
+        extractor.write_instance(output_stream, instance)
+        yield 1
+    return save_to_disk
 
 class Extractor():
     def write_instance(self, output_stream, instance_dict):
         pass
-
 
 class NDJsonExtractor(Extractor):
     def write_instance(self, output_stream, instance_dict):
