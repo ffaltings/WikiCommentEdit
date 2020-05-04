@@ -87,7 +87,7 @@ def restrict_to_section(meta):
 @Profiled.generator
 def clean_markup_mediawikiparser(instance):
     def remove_refs(s): return re.sub(r"</?ref[^>]*>", "", s)
-    def remove_misc(s): returnre.sub(r"``|''", "", s)
+    def remove_misc(s): return re.sub(r"``|''", "", s)
     def parse(s): return remove_misc(remove_refs(str(mwparserfromhell.parse(s).strip_code())))
     instance['src_text'] = parse(instance['src_text'])
     instance['tgt_text'] = parse(instance['tgt_text'])

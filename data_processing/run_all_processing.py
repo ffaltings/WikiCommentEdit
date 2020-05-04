@@ -85,7 +85,7 @@ if __name__ == "__main__":
         compute_diff,
         find_continous_edits,
         filter_single_edit_span, # alternative step: split_into_continuous_edits,
-        filter_additions(min_length=3, max_length=200),
+        filter_additions(min_length=3, max_length=100),
         extract_sentence_context_around_target(1, 1), # original: extract_context_around_diff(ctx_window_size=5),
         # extract_common_crawl_groundings(target_length=200), # download grounding documents from CommonCrawl
         # remove_without_grounding_docs,
