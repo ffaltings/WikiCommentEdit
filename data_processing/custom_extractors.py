@@ -29,3 +29,7 @@ class TsvExtractor(Extractor):
         values = [str(instance_dict.get(f, "")) for f in self.field_names]
         line = "\t".join(values) + '\n'
         output_stream.write(line)
+
+class StringExtractor(Extractor):
+    def write_instance(self, output_stream, instance):
+        output_stream.write(instance + "\n")
