@@ -21,7 +21,7 @@ def read_from_path_url(path_gz_url):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output-file', type=str, default="index_urls.txt", help='the output file containing one index url per line')
+    parser.add_argument('--output-file', type=str, default="cc-indices.txt", help='the output file containing one index url per line')
     args = parser.parse_args()
 
     indices = json.loads(urllib.request.urlopen(CollectionInfo).read())
