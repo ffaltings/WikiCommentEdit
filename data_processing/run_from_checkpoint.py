@@ -35,6 +35,7 @@ if __name__ == "__main__":
     parser.add_argument('--input-path', type=str, default="./data/in/", help='the input directory')
     parser.add_argument('--output-path', type=str, default="./data/out/", help='the output directory')
     parser.add_argument('--index', type=int, help='the index of the file in the input path to process')
+    parser.add_argument('--prejoined-cc-index', type=str, default=None, help='optional file containing a pre-joined CommonCrawl index in CDX format')
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)s) %(message)s')
     checkpoint_file = os.path.join(args.input_path, "{}.json".format(args.index))
@@ -65,7 +66,7 @@ if __name__ == "__main__":
         # save_to_disk(json_output_stream, NDJsonExtractor()), # chose extractor here
 
         ## Start processing from here ##
-        #extract_common_crawl_groundings(), # download grounding documents from CommonCrawl
+        extract_common_crawl_groundings(prejoined_index_file=args.prejoined_cc_index),
         remove_without_grounding_docs,
         extract_grounding_snippet(target_length=500, min_overlap_tokens=5),
         remove_without_grounding_snippets,

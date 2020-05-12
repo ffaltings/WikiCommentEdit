@@ -108,10 +108,10 @@ def grounding_domain_whitelist(whitelist=[], file=None):
     return grounding_domain_whitelist
 
 
-def extract_common_crawl_groundings():
-    from common_crawl import CommonCrawlS3
+def extract_common_crawl_groundings(prejoined_index_file = None):
+    from common_crawl import CommonCrawlS3, PreindexedCommonCrawlS3
     from grounding_helpers import extract_text_bs4
-    cc = CommonCrawlS3()
+    cc = PreindexedCommonCrawlS3(prejoined_index_file) if prejoined_index_file else CommonCrawlS3()
 
     @Profiled.generator
     def extract_common_crawl_groundings(instance):
