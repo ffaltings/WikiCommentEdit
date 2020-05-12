@@ -78,7 +78,7 @@ def has_grounding(look_in_src = True, look_in_tgt = True):
             source_text = "".join(sources)
             url_set = list(set(re.findall(r"https?://[^\s|\]]+", source_text)))
             instance["grounding_urls"] = [url.lower() for url in url_set]
-            instance["grounding_canonical_urls"] = [canonicalize(urs) for url in url_set]
+            instance["grounding_canonical_urls"] = [canonicalize(url) for url in url_set]
             yield instance
 
     return has_grounding

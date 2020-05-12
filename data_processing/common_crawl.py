@@ -1,8 +1,10 @@
 import json, requests, gzip
 import logging
 import urllib
+from pywb.utils.canonicalize import canonicalize
 from io import StringIO, BytesIO
 from functools import partial
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 def silence_exceptions_with_none(f):
@@ -112,10 +114,31 @@ class CommonCrawlS3():
             .format(outcome_word, url, attempts, success_count, self.call_count, success_percent))
         return result
 
+
+class PreindexedCommonCrawlS3:
+    """A variant of CommanCrawlS3 that uses a pre-joined index file to determine the file / offset to download"""
+    
+    def __init__(self, index_file):
+        self.meta_index = defaultdict(list)
+        with open(index_file, encoding="utf8") as f:
+            for line in f:
+                canonical, _, meta = line.strip().split("\t")
+                self.meta_index[canonical].append(meta)
+
+    def get_html(self, url):
+        canonical = canonicalize(url)
+        metas = self.meta_index.get(canonical)
+        if not metas: return None
+        metas = [json.loads(m) for m in metas]
+        metas = [m for m in metas if m['status'] == "200"]
+        metas = sorted(metas, key = lambda m: m['filename'], reverse=True)
+        html = get_first_or_none(map(CommonCrawlS3.fetch_html_from_s3_file, metas))
+        return html
+
 if __name__ == "__main__":
     from grounding_helpers import extract_text_bs4
-    
     cc = CommonCrawlS3()
+    #cc = PreindexedCommonCrawlS3("grounding_index.txt")
     html = cc.get_html("https://en.wikipedia.org/wiki/Barack_Obama")
     text = extract_text_bs4(html)
     print(text)
