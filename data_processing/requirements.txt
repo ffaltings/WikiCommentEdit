@@ -7,3 +7,4 @@ mediawiki-parser
 mwparserfromhell
 tqdm
 bs4
+pywb

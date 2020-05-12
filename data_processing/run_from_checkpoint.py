@@ -65,15 +65,18 @@ if __name__ == "__main__":
         # save_to_disk(json_output_stream, NDJsonExtractor()), # chose extractor here
 
         ## Start processing from here ##
-        extract_common_crawl_groundings(target_length=200), # download grounding documents from CommonCrawl
+        #extract_common_crawl_groundings(), # download grounding documents from CommonCrawl
         remove_without_grounding_docs,
+        extract_grounding_snippet(target_length=500, min_overlap_tokens=5),
+        remove_without_grounding_snippets,
         project_to_fields([
             'rev_id', 'page_id', 'parent_id', 'timestamp',
             'src_text', 'tgt_text', 'comment_text',
             'section_title', 'page_title',
+            'diff_url',
             'src_tokens', 'tgt_tokens', 'src_action', 'tgt_action',
             'left_context', 'right_context', "left_text", "right_text",
-            'grounding_urls', "grounding_docs"]),
+            'grounding_urls', "grounding_docs", "grounding_canonical_urls", "grounding_snippets"]),
         save_to_disk(json_output_stream, NDJsonExtractor()), # chose extractor here
     ]
     
