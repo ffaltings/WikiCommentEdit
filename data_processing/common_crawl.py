@@ -122,8 +122,11 @@ class PreindexedCommonCrawlS3:
         self.meta_index = defaultdict(list)
         with open(index_file, encoding="utf8") as f:
             for line in f:
-                canonical, _, meta = line.strip().split("\t")
-                self.meta_index[canonical].append(meta)
+                try:
+                    canonical, _, meta = line.strip().split("\t")
+                    self.meta_index[canonical].append(meta)
+                except Exception as e:
+                    logging.error("Malformed line in index file {}: {}. Exception: {}".format(index_file, line, str(e)))
 
     def get_html(self, url):
         canonical = canonicalize(url)
