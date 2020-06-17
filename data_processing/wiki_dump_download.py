@@ -12,8 +12,7 @@ import threading
 import urllib.request
 from datetime import datetime
 
-from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
-
+#from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 
 def get_dump_task(dump_status_file, data_path, compress_type, start, end, azure=False):
     url_list = []

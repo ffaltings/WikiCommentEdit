@@ -18,6 +18,16 @@ def chain_generators(iterable, list_of_generators):
 
     return reduce(flatmap, list_of_generators, iterable)
 
+def process(input_stream, base_generator, processors):
+    """Applies the base_generator on input_stream, then chains processor steps in processors, finally uses extractor to write to output_stream"""
+    from tqdm import tqdm
+    from profiling import Profiled
+
+    iterable = tqdm(base_generator(input_stream), "baseline generator", mininterval=3.0)
+    results = chain_generators(iterable, processors)
+    for _ in tqdm(results, "final results", mininterval=3.0):
+        Profiled.total_count += 1
+
 if __name__ == "__main__":
     """This is a demo of how generators are chained"""
 

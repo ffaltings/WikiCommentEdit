@@ -77,7 +77,7 @@ if __name__ == "__main__":
         text_length(5, 10000000),
         restrict_to_section,
         has_grounding(look_in_src=True, look_in_tgt=True),
-        grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
+        ##grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
         remove_all_urls(replacement='URL'),
         clean_markup_mediawikiparser,
         clean_markup_custom,

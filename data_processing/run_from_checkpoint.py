@@ -9,7 +9,7 @@ import json
 
 from functools import partial
 from tqdm import tqdm
-from generator_chaining import chain_generators
+from generator_chaining import process
 from profiling import Profiled
 from custom_filters import *
 from custom_extractors import *
@@ -22,13 +22,6 @@ def ndjson_generator(input_stream):
     for line in input_stream:
         object = json.loads(line)
         yield object
-
-def process(input_stream, base_generator, processors):
-    """Applies the base_generator on input_stream, then chains processor steps in processors, finally uses extractor to write to output_stream"""
-    iterable = tqdm(base_generator(input_stream), "baseline generator", mininterval=3.0)
-    results = chain_generators(iterable, processors)
-    for instance in tqdm(results, "final results", mininterval=3.0):
-        Profiled.total_count += 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
