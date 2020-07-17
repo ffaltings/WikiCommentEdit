@@ -149,8 +149,6 @@ class PreindexedCommonCrawlS3:
                 except Exception as e:
                     logging.error("Malformed line in index file {}: {}. Exception: {}".format(index_file, line, str(e)))
 
-        
-
     def get_html(self, url, closest_datetime_str = None):
         canonical = canonicalize(url)
         metas = self.meta_index.get(canonical)

@@ -65,37 +65,91 @@ def has_section_title(instance):
 def is_human_edit(instance):
     raise NotImplementedError
 
-def has_grounding(look_in_src = True, look_in_tgt = True):
-
+def canonize_grounding():
     from pywb.utils.canonicalize import canonicalize
+    
+    @Profiled.generator
+    def canonize_grounding(instance):
+        if "grounding_urls" in instance:
+            instance["grounding_urls"] = [url.lower() for url in instance["grounding_urls"]]
+            instance["grounding_canonical_urls"] = [canonicalize(url) for url in instance["grounding_urls"]]
+        yield instance
+
+    return canonize_grounding
+
+def has_urls_in_text(look_in_src = True, look_in_tgt = True):
+    """Filters instances to contain at least one url and extracts a preliminary 'grounding_urls' field"""
+
+    @Profiled.generator
+    def has_urls_in_text(instance):
+        url_set = set()
+        if look_in_src:
+            url_set.update(instance["src_urls"])
+        if look_in_tgt:
+            url_set.update(instance["tgt_urls"])
+        if len(url_set) > 0:
+            # preliminary set of grounding urls. May be filtered/overridden later on
+            instance["grounding_urls"] = url_set
+            yield instance
+
+    return has_urls_in_text
+
+
+def has_grounding():
+    """Filters instances that have a grounding_url set at this stage"""
 
     @Profiled.generator
     def has_grounding(instance):
-        sources = []
-        if look_in_src: sources.append(instance["src_text"])
-        if look_in_tgt: sources.append(instance["tgt_text"])
-        if any("http://" in source for source in sources):
-            source_text = "".join(sources)
-            url_set = list(set(re.findall(r"https?://[^\s|\]]+", source_text)))
-            instance["grounding_urls"] = [url.lower() for url in url_set]
-
-            try:
-                instance["grounding_canonical_urls"] = [canonicalize(url) for url in url_set]
-                yield instance
-            except:
-                pass
+        if instance.get("grounding_urls"):
+            yield instance
 
     return has_grounding
 
-def remove_all_urls(replacement=''):
+
+def restrict_grounding_to_max_distance(max_token_distance, url_replacement_str = "URL"):
+    from heapq import nsmallest
+    
     @Profiled.generator
-    def remove_all_urls(instance):
-        def remove_urls (text):
-            return re.sub(r"https?://[^\s|\]]+", replacement, text, flags=re.MULTILINE)
-        instance["src_text"] = remove_urls(instance["src_text"])
-        instance["tgt_text"] = remove_urls(instance["tgt_text"])
+    def restrict_grounding_to_max_distance(instance):
+        try:
+            src_indices = [i for i,token in enumerate(instance['src_tokens']) if token == url_replacement_str]
+            tgt_indices = [i for i,token in enumerate(instance['tgt_tokens']) if token == url_replacement_str]
+            tgt_edit_indices = set(instance['tgt_token_diff'])
+            src_edit_indices = set(instance['src_token_diff'])
+
+            def t_dist(token_index, index_list):
+                closest = nsmallest(1, index_list, key=lambda x: abs(x-token_index))
+                if len(closest) < 1: return 100000000
+                dist = abs(closest[0] - token_index)
+                return dist
+
+            src_urls_with_dist = [(url_index, t_dist(token_index, src_edit_indices)) for url_index, token_index in enumerate(src_indices)]
+            tgt_urls_with_dist = [(url_index, t_dist(token_index, tgt_edit_indices)) for url_index, token_index in enumerate(tgt_indices)]
+
+            tgt_url_respecting_dist = [instance["tgt_urls"][url_index] for url_index, token_dist in tgt_urls_with_dist if token_dist < max_token_distance]
+            src_url_respecting_dist = [instance["src_urls"][url_index] for url_index, token_dist in src_urls_with_dist if token_dist < max_token_distance]
+
+            grounding_set = set(tgt_url_respecting_dist).union(set(src_url_respecting_dist))
+            instance["grounding_urls"] = list(grounding_set)
+            yield instance
+        except Exception as e:
+            logging.error("Could not restrict grounding urls to max token distance: " + str(e))
+
+    return restrict_grounding_to_max_distance
+
+def clean_urls(replacement='URL'):
+    """Replaces URLs in the text with replacement string, and keeps list of URLs seperately from text"""
+    url_regex = re.compile(r"https?://[^\s|\]]+", flags=re.MULTILINE)
+
+    @Profiled.generator
+    def clean_urls(instance):
+        instance["src_urls"] = url_regex.findall(instance["src_text"])
+        instance["tgt_urls"] = url_regex.findall(instance["tgt_text"])
+        instance["src_text"] = url_regex.sub(replacement, instance["src_text"])
+        instance["tgt_text"] = url_regex.sub(replacement, instance["tgt_text"])
         yield instance
-    return remove_all_urls
+
+    return clean_urls
 
 def grounding_domain_whitelist(whitelist=[], file=None):
     if file:
@@ -105,8 +159,15 @@ def grounding_domain_whitelist(whitelist=[], file=None):
 
     @Profiled.generator
     def grounding_domain_whitelist(instance):
-        instance["grounding_urls"] = [url for url in instance["grounding_urls"] if any(domain in url for domain in whitelist)]
-        if len(instance["grounding_urls"]) > 0:
+        def filter_urls(list_of_urls):
+            return [url for url in list_of_urls if any(domain in url for domain in whitelist)]
+
+        url_fields = ["grounding_urls", "src_urls", "tgt_urls"]
+        for field in url_fields:
+            instance[field] = filter_urls(instance[field])
+
+        num_urls = sum([len(instance[f]) for f in url_fields])
+        if num_urls > 0:
             yield instance
 
     return grounding_domain_whitelist

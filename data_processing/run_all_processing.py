@@ -76,9 +76,9 @@ if __name__ == "__main__":
         comment_token_length(2, 1000),
         text_length(5, 10000000),
         restrict_to_section,
-        has_grounding(look_in_src=True, look_in_tgt=True),
+        clean_urls(replacement='URL'),
+        has_urls_in_text(look_in_src=True, look_in_tgt=True),
         ##grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
-        remove_all_urls(replacement='URL'),
         clean_markup_mediawikiparser,
         clean_markup_custom,
         tokenize(mode='nltk'), ## NOTE: mode can be 'spacy' or 'nltk'
@@ -86,8 +86,11 @@ if __name__ == "__main__":
         find_continous_edits,
         filter_single_edit_span, # alternative step: split_into_continuous_edits,
         filter_additions(min_length=3, max_length=100),
+        restrict_grounding_to_max_distance(max_token_distance = 20), # only include URLs cited within 20 tokens of the edit
+        has_grounding(), # abort here if there is no grounding documents left
         extract_sentence_context_around_target(1, 1), # original: extract_context_around_diff(ctx_window_size=5),
         filter_to_min_context(min_left_tokens=10), # require some left context, right context for now optional
+        canonize_grounding(), # convert grounding_urls into canonical grounding urls for CommonCrawl
         # extract_common_crawl_groundings(), # download grounding documents from CommonCrawl
         # remove_without_grounding_docs,
         # extract_grounding_snippet(target_length=200, min_overlap_tokens=5),
