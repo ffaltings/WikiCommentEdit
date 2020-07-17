@@ -56,6 +56,7 @@ if __name__ == "__main__":
         # filter_single_edit_span, # alternative step: split_into_continuous_edits,
         # filter_additions(min_length=3, max_length=200),
         # extract_sentence_context_around_target(1, 1), # original: extract_context_around_diff(ctx_window_size=5),
+        # filter_to_min_context(min_left_tokens=10), # require some left context, right context for now optional
         # save_to_disk(json_output_stream, NDJsonExtractor()), # chose extractor here
 
         ## Start processing from here ##

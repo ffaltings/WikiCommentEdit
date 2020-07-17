@@ -262,11 +262,21 @@ def extract_sentence_context_around_target(left_sentences=1, right_sentences=1):
     return extract_sentence_context_around_target
 
 
-def filter_to_min_context(min_left_tokens, min_right_tokens):
+def filter_to_min_context(min_left_tokens = None, min_right_tokens = None):
 
     @Profiled.generator
     def filter_to_min_context(instance):
-        raise NotImplementedError
+        if min_left_tokens:
+            n_left_tokens = sum(map(len, instance["left_context"]))
+            if n_left_tokens < min_left_tokens:
+                return
+
+        if min_right_tokens:
+            n_right_tokens = sum(map(len, instance["right_context"]))
+            if n_right_tokens < min_right_tokens:
+                return
+
+        yield instance
 
     return filter_to_min_context
 

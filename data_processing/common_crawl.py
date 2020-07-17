@@ -1,11 +1,14 @@
 import json, requests, gzip
 import logging
 import urllib
+import re
 from pywb.utils.canonicalize import canonicalize
 from io import StringIO, BytesIO
 from functools import partial
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from dateparser import parse as parse_date
 
 def silence_exceptions_with_none(f):
     def ignoring_f(*args, **kwargs):
@@ -84,7 +87,7 @@ class CommonCrawlS3():
                 return response
 
     @silence_exceptions_with_none
-    def get_html_from_index(self, index, url):
+    def get_html_from_index(self, index, url, closest_datetime_str = None):
         index_url = 'http://index.commoncrawl.org/' + index + "-index"
         params = [
             ('output', 'json'),
@@ -96,14 +99,15 @@ class CommonCrawlS3():
             return None
         lines = resp.content.decode("utf-8").strip().split('\n')
         references = (json.loads(x) for x in lines)
+        #TODO: respect closest_datetime_str. Currently this feature is only supported in PreindexedCommonCrawlS3
         return get_first_or_none(map(CommonCrawlS3.fetch_html_from_s3_file, references))
         
-    def get_html(self, url):
+    def get_html(self, url, closest_datetime_str = None):
         if url in self.cache:
             return self.cache[url]
 
         self.call_count += 1
-        fetch = partial(self.get_html_from_index, url=url)
+        fetch = partial(self.get_html_from_index, url=url, closest_datetime_str=closest_datetime_str)
         result, attempts = first_result_parallel(fetch, self.indices, self.parallel_attempts)
         self.cache[url] = result
         if result is None: self.fail_count += 1
@@ -114,6 +118,23 @@ class CommonCrawlS3():
             .format(outcome_word, url, attempts, success_count, self.call_count, success_percent))
         return result
 
+def sort_by_closest(metas, closest_datetime):
+    """Given a list of index snapshot metadata, and a datetime reference, sorts metadata in-place by temporally closest to reference time"""
+    
+    closest_datetime = closest_datetime.replace(tzinfo=None)
+    def delta_to_approx_crawl_date(meta):
+        m = re.search(r"CC-MAIN-(\d\d\d\d)(\d\d)(\d\d)", meta['filename']) # use filename as proxy for crawl time
+        if m:
+            year, month, day = m.group(1), m.group(2), m.group(3)
+            crawl_time = datetime(int(year), int(month), int(day), tzinfo=None)
+            delta = abs(closest_datetime - crawl_time)
+            return delta
+    try:
+        metas.sort(key=delta_to_approx_crawl_date)
+        return True
+    except Exception as e:
+        logging.error("Could not sort CommonCrawl snapshots by closest reference time: " + str(e))
+        return False
 
 class PreindexedCommonCrawlS3:
     """A variant of CommanCrawlS3 that uses a pre-joined index file to determine the file / offset to download"""
@@ -128,13 +149,19 @@ class PreindexedCommonCrawlS3:
                 except Exception as e:
                     logging.error("Malformed line in index file {}: {}. Exception: {}".format(index_file, line, str(e)))
 
-    def get_html(self, url):
+        
+
+    def get_html(self, url, closest_datetime_str = None):
         canonical = canonicalize(url)
         metas = self.meta_index.get(canonical)
         if not metas: return None
         metas = [json.loads(m) for m in metas]
         metas = [m for m in metas if m['status'] == "200"]
-        metas = sorted(metas, key = lambda m: m['filename'], reverse=True)
+        if len(metas) > 1 and closest_datetime_str and sort_by_closest(metas, parse_date(closest_datetime_str)):
+            pass # successfully sorted metas by reference time
+        else:
+            metas = sorted(metas, key = lambda m: m['filename'], reverse=True)
+    
         html = get_first_or_none(map(CommonCrawlS3.fetch_html_from_s3_file, metas))
         return html
 

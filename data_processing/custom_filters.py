@@ -121,7 +121,7 @@ def extract_common_crawl_groundings(prejoined_index_file = None):
     def extract_common_crawl_groundings(instance):
         def download_grounding(url):
             try:
-                html = cc.get_html(url)
+                html = cc.get_html(url, closest_datetime_str=instance.get('timestamp'))
                 if not html: return None
                 text = extract_text_bs4(html)
                 return text
