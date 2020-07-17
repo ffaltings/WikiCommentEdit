@@ -53,6 +53,9 @@ def generate_revision_pairs(wiki_stream, max_bytes=None):
                 "timestamp": timestamp
             }
 
+            meta['diff_url'] = 'https://en.wikipedia.org/w/index.php?title=' + \
+                meta["page_title"].replace(" ",'%20') + '&type=revision&diff=' + meta["rev_id"] + '&oldid=' + meta["parent_id"]
+
             # for next iteration, current text becomes prev_text
             prev_text = text
 
@@ -72,12 +75,11 @@ def restrict_to_section(meta):
 
         meta["src_text"] = extractSectionText(meta["src_text"], meta["section_title"])
         meta["tgt_text"] = extractSectionText(meta["tgt_text"], meta["section_title"])
-        meta['diff_url'] = 'https://en.wikipedia.org/w/index.php?title=' + \
-            meta["page_title"].replace(" ",'%20') + '&type=revision&diff=' + meta["rev_id"] + '&oldid=' + meta["parent_id"]
 
         # only yield pairs that are not empty
         if meta["src_text"] and meta["tgt_text"]:
             yield meta
+
     except:
         # don't yield anything if any exception happens
         logging.error("Regex error in " + str(meta['page_id']))
@@ -166,7 +168,7 @@ def split_into_continuous_edits(instance):
     """Forks an instance containining multiple edit locations within one edit into a seperate instance for each edit span"""
     edits = instance['tgt_token_diffs']
     if not edits: return
-    print("will split into {} subinstance".format(len(edits)))
+    #print("will split into {} subinstance".format(len(edits)))
     del instance['tgt_token_diffs']
     del instance['src_token_diffs']
     del instance['tgt_token_diff']
@@ -258,6 +260,15 @@ def extract_sentence_context_around_target(left_sentences=1, right_sentences=1):
         yield instance
 
     return extract_sentence_context_around_target
+
+
+def filter_to_min_context(min_left_tokens, min_right_tokens):
+
+    @Profiled.generator
+    def filter_to_min_context(instance):
+        raise NotImplementedError
+
+    return filter_to_min_context
 
 def project_to_fields(accepted_fields):
     """Creates a projection of the instance to a pre-supplied set of fields"""

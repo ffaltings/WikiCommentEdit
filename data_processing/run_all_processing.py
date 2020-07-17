@@ -70,7 +70,7 @@ if __name__ == "__main__":
     ### chose processing and filtering steps here:
     processors = [
         has_section_title,
-        comment_length(20, 200),
+        comment_length(5, 200),
         exclude_page_types(["Talk:", "User talk:", "Wikipedia talk:", "Template talk:", "User:", "Wikipedia:"]),
         comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
         comment_token_length(2, 1000),
