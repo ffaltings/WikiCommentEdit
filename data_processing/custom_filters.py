@@ -40,6 +40,15 @@ def comment_blocklist_filter(exclude_words = ["[[Project:AWB|AWB]]", "[[Project:
             yield meta
     return comment_blocklist_filter
 
+@Profiled.generator
+def clean_newlines(instance):
+    def clean(text):
+        return re.sub(r"[\r\n]+", "\n", text)
+
+    instance["src_text"] = clean(instance["src_text"])
+    instance["tgt_text"] = clean(instance["tgt_text"])
+    yield instance
+
 def text_length(min_len, max_len):
     @Profiled.generator
     def text_length(instance):

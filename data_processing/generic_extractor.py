@@ -240,20 +240,26 @@ def extract_sentence_context_around_target(left_sentences=1, right_sentences=1):
         sent_indices = find_sentence_indices(token_offsets, [min_token, max_token])
         min_sentence, max_sentence = min(sent_indices), max(sent_indices)
         
-        # extract left/right context sentence
+        # extract left/right context sentence(s). Does not contain left/right context from target sentence
         instance["left_context"] = instance['tgt_sents'][min_sentence-left_sentences:min_sentence]
         instance["right_context"] = instance['tgt_sents'][max_sentence+1:max_sentence+1+right_sentences]
 
         # prune target to only contain relevant sentences
         start_token = token_offsets[min_sentence]
         end_token = token_offsets[max_sentence+1]
-        instance["tgt_tokens"] = instance["tgt_tokens"][start_token:end_token]
+        
+        # extract within-sentence left/right context
+        in_sentence_left_context = instance["tgt_tokens"][start_token:min_token]
+        in_sentence_right_context = instance["tgt_tokens"][max_token:end_token]
+        in_sentence_target = instance["tgt_tokens"][min_token:max_token]
+
+        instance["tgt_tokens"] = in_sentence_target
         instance["tgt_sents"] = instance['tgt_sents'][min_sentence:max_sentence+1]
         
         # hacky reconstruction of tgt_text
         instance["tgt_text"] = " ".join(instance["tgt_tokens"])
-        instance["left_text"] = " ".join(flatten1(instance["left_context"]))
-        instance["right_text"] = " ".join(flatten1(instance["right_context"]))
+        instance["left_text"] = " ".join(flatten1(instance["left_context"]) + in_sentence_left_context) 
+        instance["right_text"] = " ".join(in_sentence_right_context + flatten1(instance["right_context"]))
 
         # get rid of all src_ keys
         for key in [key for key in instance if key.startswith("src_")]: del instance[key]

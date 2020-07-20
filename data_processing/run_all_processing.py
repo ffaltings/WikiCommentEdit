@@ -81,6 +81,7 @@ if __name__ == "__main__":
         ##grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
         clean_markup_mediawikiparser,
         clean_markup_custom,
+        clean_newlines,
         tokenize(mode='nltk'), ## NOTE: mode can be 'spacy' or 'nltk'
         compute_diff,
         find_continous_edits,
