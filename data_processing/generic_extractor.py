@@ -120,6 +120,22 @@ def tokenize(mode):
     return tokenize
 
 @Profiled.generator
+def prune_to_sentence_diff(instance):
+    # create single-string sentence as a first step
+    src_sents = [" ".join(x) for x in instance['src_sents']]
+    tgt_sents = [" ".join(x) for x in instance['tgt_sents']]
+    src_sent_diff, tgt_sent_diff = diffRevision(src_sents, tgt_sents)
+    if len(src_sent_diff) == 0 and len(tgt_sent_diff) == 0:
+        return
+
+    if src_sent_diff == tgt_sent_diff:
+        # prune context to only differing sentence
+        instance['src_tokens'] = [token for diff_idx in src_sent_diff for token in instance['src_sents'][diff_idx]]
+        instance['tgt_tokens'] = [token for diff_idx in tgt_sent_diff for token in instance['tgt_sents'][diff_idx]]
+
+    yield instance
+
+@Profiled.generator
 def compute_diff(instance):
     """Given src_tokens and tgt_tokens, computes a token-level diff"""
 
@@ -210,9 +226,10 @@ def extract_context_around_diff(ctx_window_size):
     return extract_context
 
 
-
 def extract_sentence_context_around_target(left_sentences=1, right_sentences=1):
-    """Creates a context window around the TARGET tokens, based on sentence tokenization"""
+    """Creates a context window around the TARGET tokens, based on sentence tokenization.
+    By setting left_sentences and right_sentences to 0, this generator would only extract within-sentence left/right context.
+    If a value > 0 is given, full sentences on the left/right are appended to the context"""
 
     def flatten1(lol):
         return [x for inner in lol for x in inner]

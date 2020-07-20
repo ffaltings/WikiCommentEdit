@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
     ### chose processing and filtering steps here:
     processors = [
-        has_section_title,
+        ## has_section_title,
         comment_length(5, 200),
         exclude_page_types(["Talk:", "User talk:", "Wikipedia talk:", "Template talk:", "User:", "Wikipedia:"]),
         comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
@@ -78,11 +78,12 @@ if __name__ == "__main__":
         restrict_to_section,
         clean_urls(replacement='URL'),
         has_urls_in_text(look_in_src=True, look_in_tgt=True),
-        ##grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
+        ## grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now
         clean_markup_mediawikiparser,
         clean_markup_custom,
         clean_newlines,
         tokenize(mode='nltk'), ## NOTE: mode can be 'spacy' or 'nltk'
+        prune_to_sentence_diff,
         compute_diff,
         find_continous_edits,
         filter_single_edit_span, # alternative step: split_into_continuous_edits,

@@ -43,7 +43,7 @@ def comment_blocklist_filter(exclude_words = ["[[Project:AWB|AWB]]", "[[Project:
 @Profiled.generator
 def clean_newlines(instance):
     def clean(text):
-        return re.sub(r"[\r\n]+", "\n", text)
+        return re.sub(r"[\r\n]+", "\n\n", text).strip().strip('\n')
 
     instance["src_text"] = clean(instance["src_text"])
     instance["tgt_text"] = clean(instance["tgt_text"])
