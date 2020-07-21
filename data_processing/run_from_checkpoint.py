@@ -63,6 +63,7 @@ if __name__ == "__main__":
 
         ## Start processing from here ##
         extract_common_crawl_groundings(prejoined_index_file=args.prejoined_cc_index),
+        filter_grounding_docs_by_language(languages = ['en']), # only keep english
         remove_without_grounding_docs,
         extract_grounding_snippet(target_length=500, min_overlap_tokens=5),
         remove_without_grounding_snippets,

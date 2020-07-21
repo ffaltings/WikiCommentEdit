@@ -9,3 +9,4 @@ tqdm
 bs4
 pywb
 dateparser
+langid

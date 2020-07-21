@@ -94,6 +94,7 @@ if __name__ == "__main__":
         filter_to_min_context(min_left_tokens=10), # require some left context, right context for now optional
         canonize_grounding(), # convert grounding_urls into canonical grounding urls for CommonCrawl
         # extract_common_crawl_groundings(), # download grounding documents from CommonCrawl
+        # filter_grounding_docs_by_language(languages = ['en']),
         # remove_without_grounding_docs,
         # extract_grounding_snippet(target_length=200, min_overlap_tokens=5),
         # remove_without_grounding_snippets,

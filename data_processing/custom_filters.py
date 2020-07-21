@@ -210,6 +210,21 @@ def extract_common_crawl_groundings(prejoined_index_file = None):
     
     return extract_common_crawl_groundings
 
+
+def filter_grounding_docs_by_language(languages=['en']):
+    import langid
+
+    def matches(text):
+        l, _ = langid.classify(text[:100000]) # limit max text length
+        return l in languages # only use highest scored prediction
+
+    @Profiled.generator
+    def filter_grounding_docs_by_language(instance):
+        instance["grounding_docs"] = list(filter(matches, instance["grounding_docs"]))
+        yield instance
+
+    return filter_grounding_docs_by_language
+
 def extract_grounding_snippet(target_length, min_overlap_tokens):
     from grounding_helpers import extract_overlapping_tokens
     from nltk import word_tokenize
