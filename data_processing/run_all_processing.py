@@ -75,7 +75,7 @@ if __name__ == "__main__":
         comment_blocklist_filter(["[[Project:AWB|AWB]]", "[[Project:AutoWikiBrowser|AWB]]", "Undid revision"]),
         comment_token_length(2, 1000),
         text_length(5, 10000000),
-        restrict_to_section,
+        ## restrict_to_section,
         clean_urls(replacement='URL'),
         has_urls_in_text(look_in_src=True, look_in_tgt=True),
         ## grounding_domain_whitelist(file=scriptdir("domains-official.txt")), ## NOTE: disabled for now

@@ -80,8 +80,12 @@ def canonize_grounding():
     @Profiled.generator
     def canonize_grounding(instance):
         if "grounding_urls" in instance:
-            instance["grounding_urls"] = [url.lower() for url in instance["grounding_urls"]]
-            instance["grounding_canonical_urls"] = [canonicalize(url) for url in instance["grounding_urls"]]
+            try:
+                instance["grounding_urls"] = [url.lower() for url in instance["grounding_urls"]]
+                instance["grounding_canonical_urls"] = [canonicalize(url) for url in instance["grounding_urls"]]
+            except Exception as e:
+                logging.error("Could not canonize grounding URLs: " + str(e))
+                return
         yield instance
 
     return canonize_grounding
