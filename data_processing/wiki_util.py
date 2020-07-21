@@ -407,14 +407,14 @@ def tokenizeText(text):
     return sent_tokens, tokens
 
 # return the difference indices starting at 0.
-def diffRevision(parent_sent_list, sent_list):
+def diffRevision(parent_sent_list, sent_list, context_size = 5):
 
     # make diff
     origin_start_idx, origin_start_idx = -1, -1
     target_start_idx, target_end_idx = -1, -1
     origin_diff_list, target_diff_list = [], []
-    for line in difflib.context_diff(parent_sent_list, sent_list, 'origin', 'target'):
-        
+    diffoutput = difflib.context_diff(parent_sent_list, sent_list, 'origin', 'target', n=context_size)
+    for line in diffoutput:
         #print(line)
         # parse the origin diff line range: e.g., --- 56,62 ----
         if line.startswith("*** ") and line.endswith(" ****\n"):
